@@ -9,6 +9,7 @@ import { preloadOpponent } from './engine/opponent';
 import { ZOMBIE_MODEL } from './screens/zombies';
 import { attachPointerSimulator } from './input/hitEvents';
 import { music } from './audio/music';
+import { installPickleballIcon } from './ui/pickleballIcon';
 
 /** Small message in the corner, e.g. after toggling music. */
 function toast(parent: HTMLElement, text: string): void {
@@ -20,6 +21,7 @@ function toast(parent: HTMLElement, text: string): void {
 }
 
 function start(): void {
+  installPickleballIcon();
   const stage = new Stage(document.getElementById('game')!);
   const app = new App(stage, new World(stage));
 

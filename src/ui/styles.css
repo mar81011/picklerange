@@ -416,8 +416,8 @@ body {
 .menu-header .prompt { display: flex; align-items: center; gap: 18px; }
 .menu-header .prompt .display { font-size: 56px; color: var(--neon); }
 .menu-header .ball {
-  width: 44px;
-  height: 44px;
+  width: 58px;
+  height: 58px;
   border-radius: 50%;
   background: radial-gradient(circle at 35% 30%, #f6ff9a, #d4f53c 45%, #9bb81e);
   box-shadow: 0 0 24px rgba(212, 245, 60, 0.8);
@@ -563,18 +563,9 @@ body {
   animation: banner-in 0.25s ease-out both;
 }
 
-/* Pickleball look: yellow-green ball with an even grid of equal holes. */
+/* Pickleball look: the SVG ball from src/ui/pickleballIcon.ts. */
 .pip:not(.used),
 .menu-header .ball {
-  background:
-    radial-gradient(circle at 24% 24%, #5a6a0c 0 7%, transparent 8.5%),
-    radial-gradient(circle at 50% 24%, #5a6a0c 0 7%, transparent 8.5%),
-    radial-gradient(circle at 76% 24%, #5a6a0c 0 7%, transparent 8.5%),
-    radial-gradient(circle at 24% 50%, #5a6a0c 0 7%, transparent 8.5%),
-    radial-gradient(circle at 50% 50%, #5a6a0c 0 7%, transparent 8.5%),
-    radial-gradient(circle at 76% 50%, #5a6a0c 0 7%, transparent 8.5%),
-    radial-gradient(circle at 24% 76%, #5a6a0c 0 7%, transparent 8.5%),
-    radial-gradient(circle at 50% 76%, #5a6a0c 0 7%, transparent 8.5%),
-    radial-gradient(circle at 76% 76%, #5a6a0c 0 7%, transparent 8.5%),
-    radial-gradient(circle at 35% 30%, #f3ff9a, #d4f53c 50%, #9fbd1f);
+  background: var(--pickleball) center / contain no-repeat;
+  border-color: transparent;
 }
