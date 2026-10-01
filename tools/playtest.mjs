@@ -76,6 +76,8 @@ for (const spec of RUNS) {
   await click(await aim(game));
   await sleep(2500);
   await shot(`${game}-0-card`);
+  await sleep(2600);
+  await shot(`${game}-1-start`);
   const start = Date.now();
   let n = 0;
   let lastShot = 0;

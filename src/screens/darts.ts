@@ -45,7 +45,7 @@ export async function dartsScreen(app: App, scope: Scope): Promise<void> {
     stuck = [];
   };
 
-  await introCard(scope, info.title, info.howTo, `${players} PLAYERS • START AT 301`);
+  await introCard(scope, info.title, info.howTo, `${players} PLAYERS • START AT 301`, undefined, false);
   if (!scope.alive) return;
   await turnBanner(scope, state.turn);
   ready = true;

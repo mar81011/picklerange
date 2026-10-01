@@ -101,7 +101,7 @@ export function memoryScreen(app: App, scope: Scope): void {
     return pick === undefined ? null : center(pick);
   };
 
-  void introCard(scope, info.title, info.howTo).then(async () => {
+  void introCard(scope, info.title, info.howTo, undefined, undefined, false).then(async () => {
     await turnBanner(scope, state.turn);
     ready = true;
   });

@@ -51,9 +51,10 @@ export async function banner(scope: Scope, text: string, cls = '', top = 330, si
 
 /**
  * Title card with how-to-play text and a 3-2-1 countdown. Resolves on GO so
- * the game can start accepting hits.
+ * the game can start accepting hits. Party games pass showGo = false, because
+ * their "PLAYER 1 — YOUR TURN" banner takes GO!'s place.
  */
-export async function introCard(scope: Scope, title: string, howTo: string, footer?: string, kicker?: string): Promise<void> {
+export async function introCard(scope: Scope, title: string, howTo: string, footer?: string, kicker?: string, showGo = true): Promise<void> {
   const card = scope.el('div', 'panel intro-card');
   if (kicker) scope.el('div', 'label neon kicker', card, kicker);
   scope.el('div', 'title display', card, title);
@@ -69,5 +70,5 @@ export async function introCard(scope: Scope, title: string, howTo: string, foot
     await scope.wait(650);
   }
   card.remove();
-  void banner(scope, 'GO!', 'neon', 380, 180, 300);
+  if (showGo) void banner(scope, 'GO!', 'neon', 380, 180, 300);
 }

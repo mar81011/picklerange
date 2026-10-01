@@ -82,7 +82,7 @@ export function ticTacToeScreen(app: App, scope: Scope): void {
     return free.length ? center(free[Math.floor(Math.random() * free.length)]) : null;
   };
 
-  void introCard(scope, info.title, info.howTo, 'PLAYER 1 = X • PLAYER 2 = O').then(async () => {
+  void introCard(scope, info.title, info.howTo, 'PLAYER 1 = X • PLAYER 2 = O', undefined, false).then(async () => {
     await turnBanner(scope, state.turn);
     ready = true;
   });

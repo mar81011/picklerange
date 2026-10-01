@@ -18,58 +18,73 @@ function sharedSpark(): THREE.Texture {
  * Drawn about twice a real pickleball's size (74 mm): on a projected wall
  * the real size is only a few pixels and the holes would be invisible.
  */
-export const BALL_RADIUS = 0.08;
+export const BALL_RADIUS = 0.065;
 
-/** Pickleball skin: yellow-green with rows of round holes (equirectangular, so the holes wrap the sphere). */
+/** Number of holes, like a regulation outdoor ball. */
+const HOLES = 40;
+/** Angular radius of each hole on the sphere, in radians. */
+const HOLE_RADIUS = 0.15;
+
+/**
+ * Pickleball skin, computed per pixel on the sphere so every hole is perfectly
+ * round and evenly spaced (a flat drawing would stretch near the poles).
+ * Holes sit on a Fibonacci spiral, which spreads points evenly over a sphere.
+ */
 function pickleballTexture(): THREE.CanvasTexture {
-  return canvasTexture(512, 256, (ctx) => {
-    const g = ctx.createLinearGradient(0, 0, 0, 256);
-    g.addColorStop(0, '#e9ff6a');
-    g.addColorStop(0.5, '#d4f53c');
-    g.addColorStop(1, '#b9d92a');
-    ctx.fillStyle = g;
-    ctx.fillRect(0, 0, 512, 256);
-    // Five rings of holes around the ball plus one at each pole, like a 26-40 hole outdoor ball.
-    const rings = [
-      { lat: 0, count: 10 },
-      { lat: 38, count: 8 },
-      { lat: -38, count: 8 },
-      { lat: 68, count: 5 },
-      { lat: -68, count: 5 },
-    ];
-    for (const [ri, ring] of rings.entries()) {
-      const y = 128 - (ring.lat / 90) * 128;
-      // Holes stretch sideways near the poles in this projection.
-      const stretch = 1 / Math.max(0.35, Math.cos((ring.lat * Math.PI) / 180));
-      for (let i = 0; i < ring.count; i++) {
-        const x = ((i + (ri % 2) * 0.5) / ring.count) * 512;
-        for (const dx of [0, 512, -512]) {
-          ctx.fillStyle = '#7d8f12';
-          ctx.beginPath();
-          ctx.ellipse(x + dx, y, 14 * stretch, 14, 0, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.fillStyle = '#4a560a';
-          ctx.beginPath();
-          ctx.ellipse(x + dx + 1.5, y + 1.5, 10 * stretch, 10, 0, 0, Math.PI * 2);
-          ctx.fill();
+  const W = 512;
+  const H = 256;
+  const holes: [number, number, number][] = [];
+  const golden = Math.PI * (3 - Math.sqrt(5));
+  for (let i = 0; i < HOLES; i++) {
+    const y = 1 - ((i + 0.5) / HOLES) * 2;
+    const r = Math.sqrt(1 - y * y);
+    holes.push([Math.cos(golden * i) * r, y, Math.sin(golden * i) * r]);
+  }
+  const cosHole = Math.cos(HOLE_RADIUS);
+  const cosRim = Math.cos(HOLE_RADIUS * 1.35);
+  return canvasTexture(W, H, (ctx) => {
+    const img = ctx.createImageData(W, H);
+    const smooth = (e0: number, e1: number, x: number) => {
+      const t = Math.min(1, Math.max(0, (x - e0) / (e1 - e0)));
+      return t * t * (3 - 2 * t);
+    };
+    for (let row = 0; row < H; row++) {
+      // Same mapping as THREE.SphereGeometry's UVs (texture row 0 = top of the ball).
+      const theta = ((row + 0.5) / H) * Math.PI;
+      for (let col = 0; col < W; col++) {
+        const phi = ((col + 0.5) / W) * Math.PI * 2;
+        const dx = -Math.cos(phi) * Math.sin(theta);
+        const dy = Math.cos(theta);
+        const dz = Math.sin(phi) * Math.sin(theta);
+        let best = -1;
+        for (const [hx, hy, hz] of holes) best = Math.max(best, dx * hx + dy * hy + dz * hz);
+        // Ball yellow, a slightly darker raised rim, and the dark hole inside.
+        const rim = smooth(cosRim, cosHole, best);
+        const hole = smooth(cosHole - 0.002, cosHole + 0.004, best);
+        const base = [228, 242, 60];
+        const rimColor = [196, 214, 40];
+        const holeColor = [58, 70, 10];
+        const i = (row * W + col) * 4;
+        for (let k = 0; k < 3; k++) {
+          const c = base[k] + (rimColor[k] - base[k]) * rim;
+          img.data[i + k] = c + (holeColor[k] - c) * hole;
         }
+        img.data[i + 3] = 255;
       }
     }
-    for (const y of [4, 252]) {
-      ctx.fillStyle = '#4a560a';
-      ctx.fillRect(0, y - 6, 512, 12);
-    }
+    ctx.putImageData(img, 0, 0);
   });
 }
 
-const ballGeometry = new THREE.SphereGeometry(BALL_RADIUS, 24, 16);
+const ballGeometry = new THREE.SphereGeometry(BALL_RADIUS, 40, 28);
 ballGeometry.userData.shared = true;
 const ballTexture = pickleballTexture();
 ballTexture.userData.shared = true;
-const ballMaterial = new THREE.MeshStandardMaterial({ map: ballTexture, emissive: NEON_HEX, emissiveIntensity: 0.12, roughness: 0.55 });
+const ballMaterial = new THREE.MeshStandardMaterial({ map: ballTexture, emissive: NEON_HEX, emissiveIntensity: 0.08, roughness: 0.45 });
 ballMaterial.userData.shared = true;
 
-function makeBall(): THREE.Mesh {
+/** A pickleball mesh (shared geometry and material). */
+export function makeBall(): THREE.Mesh {
   const ball = new THREE.Mesh(ballGeometry, ballMaterial);
   ball.rotation.set(Math.random() * 6, Math.random() * 6, 0);
   ball.castShadow = true;
