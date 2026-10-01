@@ -9,8 +9,10 @@ import { join, resolve } from 'node:path';
 
 const OUT = resolve('.shots');
 const RUNS = process.argv.slice(2);
-const W = 1600;
-const H = 900;
+// PHONE=1 emulates a phone held sideways (PHONE=portrait for upright), with touch taps.
+const PHONE = process.env.PHONE;
+const W = PHONE === 'portrait' ? 390 : PHONE ? 844 : 1600;
+const H = PHONE === 'portrait' ? 844 : PHONE ? 390 : 900;
 const PORT = 9340;
 const EDGE = 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe';
 mkdirSync(OUT, { recursive: true });
@@ -44,13 +46,22 @@ ws.onmessage = (m) => {
 const send = (method, params = {}) => new Promise((r) => { const i = ++id; pending.set(i, r); ws.send(JSON.stringify({ id: i, method, params })); });
 const evaluate = async (expr) => (await send('Runtime.evaluate', { expression: expr, returnByValue: true })).result?.value;
 await send('Runtime.enable');
-await send('Emulation.setDeviceMetricsOverride', { width: W, height: H, deviceScaleFactor: 1, mobile: false });
+await send('Emulation.setDeviceMetricsOverride', { width: W, height: H, deviceScaleFactor: PHONE ? 2 : 1, mobile: Boolean(PHONE) });
+if (PHONE) {
+  await send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
+  await send('Emulation.setEmulatedMedia', { features: [{ name: 'pointer', value: 'coarse' }, { name: 'hover', value: 'none' }] });
+}
 
 const shot = async (name) => {
   const { data } = await send('Page.captureScreenshot', { format: 'png' });
   writeFileSync(`${OUT}/${name}.png`, Buffer.from(data, 'base64'));
 };
 const click = async (p) => {
+  if (PHONE) {
+    await send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: p.x * W, y: p.y * H }] });
+    await send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    return;
+  }
   for (const type of ['mousePressed', 'mouseReleased']) await send('Input.dispatchMouseEvent', { type, x: p.x * W, y: p.y * H, button: 'left', clickCount: 1 });
 };
 const aim = (key) => evaluate(`window.__aim(${key ? JSON.stringify(key) : ''})`);
@@ -70,7 +81,7 @@ for (const spec of RUNS) {
   const [game, startLevel = '1', maxSec = '30'] = spec.split(':');
   await openMenu(startLevel);
   if (game === 'menu') {
-    await shot('menu');
+    await shot(`menu${PHONE ? '-' + (PHONE === 'portrait' ? 'portrait' : 'phone') : ''}`);
     continue;
   }
   await click(await aim(game));

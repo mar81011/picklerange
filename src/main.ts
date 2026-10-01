@@ -11,6 +11,7 @@ import { attachPointerSimulator } from './input/hitEvents';
 import { music } from './audio/music';
 import { scoreStore } from './services';
 import { installPickleballIcon } from './ui/pickleballIcon';
+import { installTouchUi } from './ui/touch';
 
 /** Small message in the corner, e.g. after toggling music. */
 function toast(parent: HTMLElement, text: string): void {
@@ -28,6 +29,7 @@ function start(): void {
 
   // Until the Kinect bridge exists, mouse clicks and taps stand in for ball hits.
   attachPointerSimulator(stage.frame);
+  installTouchUi(stage);
   if (new URLSearchParams(location.search).has('fps')) stage.showFps();
   // F toggles fullscreen, M mutes the music. (Not double-click: every click counts as a ball hit.)
   window.addEventListener('keydown', (e) => {

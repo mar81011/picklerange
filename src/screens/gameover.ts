@@ -5,6 +5,7 @@ import { gameInfo, type RoundResult } from '../games';
 import { cancelNameClaim, checkNameClaim, openNameClaim, type NameClaim } from '../leaderboard/nameClaims';
 import { MAX_NAME_LENGTH, sanitizeName } from '../leaderboard/names';
 import { leaderboard } from '../services';
+import { isTouchDevice } from '../ui/touch';
 
 /** Ignore hits right after the round ends so a late ball doesn't skip this screen. */
 const HIT_GRACE_MS = 1500;
@@ -109,6 +110,38 @@ export function gameOverScreen(app: App, scope: Scope, result: RoundResult): voi
   /** Fallback when the lane server is not running: staff type the name. */
   const promptKeyboard = () => {
     let typed = '';
+    if (isTouchDevice) {
+      // Phones: a real text box so the on-screen keyboard opens, plus a SAVE button.
+      const input = scope.el('input', 'name-input', view);
+      input.maxLength = MAX_NAME_LENGTH;
+      input.placeholder = 'NAME';
+      input.autocapitalize = 'characters';
+      input.enterKeyHint = 'done';
+      const save = scope.el('button', 'name-save', view, 'SAVE');
+      // Taps here are typing, not ball hits.
+      for (const el of [input, save]) el.addEventListener('pointerdown', (e) => e.stopPropagation());
+      input.addEventListener('input', () => (typed = input.value.toUpperCase()));
+      input.addEventListener('keydown', (e) => e.key === 'Enter' && sanitizeName(typed) !== null && saveScore(typed));
+      save.addEventListener('click', () => saveScore(sanitizeName(typed) ?? GUEST_NAME));
+      text('label', 'Tap the box to type your name', 730, 30);
+    } else {
+      promptTypedName((value) => (typed = value));
+    }
+
+    // Without a keyboard (e.g. the online demo on a tablet) nobody can press
+    // Enter, so save after a while: whatever was typed, or GUEST.
+    const countdown = text('label muted', '', 790, 26);
+    let secondsLeft = NAME_WAIT_SECONDS;
+    const stop = scope.every(1000, () => {
+      if (saved) return stop();
+      countdown.textContent = `Saves as ${sanitizeName(typed) ?? GUEST_NAME} in ${secondsLeft}s`;
+      if (secondsLeft-- <= 0) saveScore(sanitizeName(typed) ?? GUEST_NAME);
+    });
+  };
+
+  /** Keyboard name entry for the lane PC: letters appear in a big box; Enter saves. */
+  const promptTypedName = (onChange: (typed: string) => void) => {
+    let typed = '';
     const box = scope.el('div', 'name-box display', view, '_');
     text('label', 'Type your name  •  press Enter', 730, 30);
     const onKey = (event: KeyboardEvent) => {
@@ -120,19 +153,10 @@ export function gameOverScreen(app: App, scope: Scope, result: RoundResult): voi
       if (event.key === 'Backspace') typed = typed.slice(0, -1);
       else if (event.key.length === 1 && typed.length < MAX_NAME_LENGTH) typed = (typed + event.key).toUpperCase();
       box.textContent = typed || '_';
+      onChange(typed);
     };
     window.addEventListener('keydown', onKey);
     scope.onDispose(() => window.removeEventListener('keydown', onKey));
-
-    // Without a keyboard (e.g. the online demo on a tablet) nobody can press
-    // Enter, so save after a while: whatever was typed, or GUEST.
-    const countdown = text('label muted', '', 790, 26);
-    let secondsLeft = NAME_WAIT_SECONDS;
-    const stop = scope.every(1000, () => {
-      if (saved) return stop();
-      countdown.textContent = `Saves as ${sanitizeName(typed) ?? GUEST_NAME} in ${secondsLeft}s`;
-      if (secondsLeft-- <= 0) saveScore(sanitizeName(typed) ?? GUEST_NAME);
-    });
   };
 
   if (!leaderboard.qualifies(result.gameId, result.score)) {

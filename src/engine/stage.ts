@@ -2,6 +2,7 @@
 // looking over the net (the bottom edge of the projection) at the far court.
 import * as THREE from 'three';
 import type { Ray, Vec3 } from '../core/geometry';
+import { isTouchDevice } from '../ui/touch';
 
 export const DESIGN_WIDTH = 1920;
 export const DESIGN_HEIGHT = 1080;
@@ -58,7 +59,8 @@ export class Stage {
     this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
     // The projector is 1080p; rendering above 1x on high-DPI screens multiplies GPU work for no visible gain.
     this.renderer.setPixelRatio(1);
-    this.renderer.shadowMap.enabled = true;
+    // Phones and tablets have weaker graphics chips: skip shadows there for smoother play.
+    this.renderer.shadowMap.enabled = !isTouchDevice;
     this.renderer.shadowMap.type = THREE.PCFShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.05;
@@ -76,6 +78,9 @@ export class Stage {
     this.basePosition = this.camera.position.clone();
 
     window.addEventListener('resize', () => this.resize());
+    // Phones: the address bar showing/hiding and rotation change the visible area.
+    window.visualViewport?.addEventListener('resize', () => this.resize());
+    window.addEventListener('orientationchange', () => setTimeout(() => this.resize(), 250));
     this.resize();
     this.renderer.setAnimationLoop(() => this.frameTick());
   }
