@@ -28,7 +28,7 @@ function start(): void {
   const app = new App(stage, new World(stage));
 
   // Until the Kinect bridge exists, mouse clicks and taps stand in for ball hits.
-  attachPointerSimulator(stage.frame);
+  attachPointerSimulator(stage.frame, undefined, (x, y) => stage.clientToFrame(x, y));
   installTouchUi(stage);
   if (new URLSearchParams(location.search).has('fps')) stage.showFps();
   // F toggles fullscreen, M mutes the music. (Not double-click: every click counts as a ball hit.)
@@ -46,10 +46,10 @@ function start(): void {
     Object.assign(window, {
       __app: app,
       __aim: (key?: string) => {
-        if (app.debugAimScreen) return app.debugAimScreen(key);
-        const p = app.debugAim?.(key);
-        if (!p) return null;
-        return stage.toScreen(p);
+        // Answers in window fractions, so automated taps land right even when the game is rotated.
+        const world = app.debugAimScreen ? null : app.debugAim?.(key);
+        const p = app.debugAimScreen ? app.debugAimScreen(key) : world ? stage.toScreen(world) : null;
+        return p && stage.frameToClient(p.x, p.y);
       },
     });
   }

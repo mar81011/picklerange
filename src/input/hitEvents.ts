@@ -62,13 +62,24 @@ export function pointerToHit(
   return { x, y, timestamp, confidence: 1, source: 'pointer' };
 }
 
+/** Maps a click's window coordinates to a normalized point on the game, or null outside it. */
+export type ClientMapper = (clientX: number, clientY: number) => { x: number; y: number } | null;
+
 /**
  * Development stand-in for the sensor: every click or tap on the game area becomes
- * a HitEvent. Returns a detach function.
+ * a HitEvent. toFrame handles a rotated game (upright phones); by default the
+ * target's on-screen rectangle is used. Returns a detach function.
  */
-export function attachPointerSimulator(target: HTMLElement, bus: HitBus = hitBus): () => void {
+export function attachPointerSimulator(target: HTMLElement, bus: HitBus = hitBus, toFrame?: ClientMapper): () => void {
   const onPointerDown = (e: PointerEvent) => {
-    const hit = pointerToHit(e.clientX, e.clientY, target.getBoundingClientRect(), performance.now());
+    const now = performance.now();
+    let hit: HitEvent | null;
+    if (toFrame) {
+      const p = toFrame(e.clientX, e.clientY);
+      hit = p && { x: p.x, y: p.y, timestamp: now, confidence: 1, source: 'pointer' };
+    } else {
+      hit = pointerToHit(e.clientX, e.clientY, target.getBoundingClientRect(), now);
+    }
     if (hit) bus.publish(hit);
   };
   target.addEventListener('pointerdown', onPointerDown);

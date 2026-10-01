@@ -1,6 +1,7 @@
-// Phone and tablet extras: a "rotate your phone" screen in portrait, and small
-// fullscreen and music buttons (there are no F/M keys on a phone). None of it
-// shows on the venue PC, which has a mouse rather than a touch screen.
+// Phone and tablet extras: small fullscreen and music buttons (there are no
+// F/M keys on a phone). They don't show on the venue PC, which has a mouse
+// rather than a touch screen. (Upright phones get the game turned sideways;
+// see Stage.rotated.)
 import { music } from '../audio/music';
 import type { Stage } from '../engine/stage';
 
@@ -35,11 +36,6 @@ async function enterFullscreen(): Promise<void> {
 }
 
 export function installTouchUi(stage: Stage): void {
-  const hint = document.createElement('div');
-  hint.className = 'rotate-hint';
-  hint.innerHTML = '<div class="phone"></div><div class="title">TURN YOUR PHONE</div><div class="sub">PickleRange is played sideways, like the wall at the arcade.</div>';
-  stage.frame.appendChild(hint);
-
   if (!isTouchDevice) return;
   const bar = document.createElement('div');
   bar.className = 'touch-buttons';

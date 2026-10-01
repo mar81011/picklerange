@@ -48,8 +48,16 @@ export class Stage {
   private shakeDuration = 1;
   private basePosition: THREE.Vector3;
   private lastTime = performance.now();
-  /** How the 1920x1080 overlay maps onto the window. */
+  /** How the 1920x1080 overlay maps onto the frame. */
   private overlayFit = { scale: 1, x: 0, y: 0 };
+  /** The frame's own (landscape) size in CSS pixels. */
+  private size = { width: 1, height: 1 };
+  /**
+   * True when an upright phone shows the game turned 90°, filling the screen
+   * sideways. Covers phones with auto-rotate off, where turning the phone
+   * never rotates the page.
+   */
+  rotated = false;
 
   constructor(root: HTMLElement) {
     this.frame = document.createElement('div');
@@ -90,10 +98,21 @@ export class Stage {
    * overlay keeps its 16:9 layout, scaled to fit and centered.
    */
   private resize(): void {
-    const width = window.innerWidth;
-    const height = window.innerHeight;
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    this.rotated = isTouchDevice && vh > vw;
+    const width = this.rotated ? vh : vw;
+    const height = this.rotated ? vw : vh;
+    this.size = { width, height };
     this.frame.style.width = `${width}px`;
     this.frame.style.height = `${height}px`;
+    // Rotated: turn the frame 90° clockwise about its top-left corner, then
+    // shift it right by the screen width so it covers the screen exactly.
+    this.frame.style.position = this.rotated ? 'absolute' : '';
+    this.frame.style.left = this.rotated ? '0' : '';
+    this.frame.style.top = this.rotated ? '0' : '';
+    this.frame.style.transformOrigin = 'top left';
+    this.frame.style.transform = this.rotated ? `translateX(${vw}px) rotate(90deg)` : '';
     this.renderer.setSize(width, height);
 
     const aspect = width / height;
@@ -153,9 +172,27 @@ export class Stage {
   toOverlay(p: Vec3): { x: number; y: number } {
     const v = new THREE.Vector3(p.x, p.y, p.z).project(this.camera);
     const { scale, x, y } = this.overlayFit;
-    const screenX = ((v.x + 1) / 2) * window.innerWidth;
-    const screenY = ((1 - v.y) / 2) * window.innerHeight;
+    const screenX = ((v.x + 1) / 2) * this.size.width;
+    const screenY = ((1 - v.y) / 2) * this.size.height;
     return { x: (screenX - x) / scale, y: (screenY - y) / scale };
+  }
+
+  /**
+   * Where a tap at window coordinates lands on the game, normalized 0..1
+   * (top-left origin), or null outside it. Undoes the rotation on upright phones.
+   */
+  clientToFrame(clientX: number, clientY: number): { x: number; y: number } | null {
+    const { width, height } = this.size;
+    const x = this.rotated ? clientY / width : clientX / width;
+    const y = this.rotated ? (window.innerWidth - clientX) / height : clientY / height;
+    return x >= 0 && x <= 1 && y >= 0 && y <= 1 ? { x, y } : null;
+  }
+
+  /** The reverse of clientToFrame, as fractions of the window (for automated taps in tests). */
+  frameToClient(x: number, y: number): { x: number; y: number } {
+    if (!this.rotated) return { x, y };
+    const { width, height } = this.size;
+    return { x: (window.innerWidth - y * height) / window.innerWidth, y: (x * width) / window.innerHeight };
   }
 
   /** Where a world point appears as a normalized screen position (0..1), e.g. for aiming in tests. */

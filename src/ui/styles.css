@@ -611,44 +611,6 @@ body {
 
 .touch-buttons button.off { opacity: 0.5; }
 
-/* Portrait phones: the games are made for a wide wall, so ask to turn the phone. */
-.rotate-hint {
-  position: absolute;
-  inset: 0;
-  z-index: 30;
-  display: none;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 18px;
-  padding: 24px;
-  text-align: center;
-  background: radial-gradient(ellipse at 50% 40%, #16264f, #05080f 70%);
-  color: #fff;
-  font-family: var(--ui);
-}
-
-.rotate-hint .phone {
-  width: 70px;
-  height: 120px;
-  border: 5px solid var(--neon);
-  border-radius: 14px;
-  animation: rotate-phone 1.8s ease-in-out infinite;
-}
-
-.rotate-hint .title { font-family: var(--display); font-size: 40px; color: var(--neon); }
-.rotate-hint .sub { font-size: 18px; color: var(--muted); font-weight: 700; letter-spacing: 0.05em; max-width: 320px; }
-
-@keyframes rotate-phone {
-  0%, 20% { transform: rotate(0deg); }
-  50%, 80% { transform: rotate(-90deg); }
-  100% { transform: rotate(-90deg); }
-}
-
-@media (orientation: portrait) and (pointer: coarse) {
-  .rotate-hint { display: flex; }
-}
-
 /* Name entry on phones: a real text box so the phone keyboard opens. */
 .name-input {
   position: absolute;

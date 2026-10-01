@@ -70,11 +70,15 @@ export function menuScreen(app: App, scope: Scope): void {
     cards[lit].classList.add('lit');
   });
 
-  /** Card under a normalized screen point (0..1). */
+  /**
+   * Card under a hit (normalized game coordinates). Compared in window pixels:
+   * when the game is turned 90° on an upright phone, each card's on-screen
+   * rectangle is still exact, just rotated into place.
+   */
   const cardAt = (x: number, y: number): number => {
-    const frame = app.stage.frame.getBoundingClientRect();
-    const px = frame.left + x * frame.width;
-    const py = frame.top + y * frame.height;
+    const client = app.stage.frameToClient(x, y);
+    const px = client.x * window.innerWidth;
+    const py = client.y * window.innerHeight;
     return cards.findIndex((c) => {
       const r = c.getBoundingClientRect();
       return px >= r.left && px <= r.right && py >= r.top && py <= r.bottom;
@@ -83,9 +87,8 @@ export function menuScreen(app: App, scope: Scope): void {
 
   app.debugAimScreen = (key) => {
     const index = Math.max(0, GAMES.findIndex((g) => g.id === key));
-    const frame = app.stage.frame.getBoundingClientRect();
     const r = cards[index].getBoundingClientRect();
-    return { x: (r.left + r.width / 2 - frame.left) / frame.width, y: (r.top + r.height / 2 - frame.top) / frame.height };
+    return app.stage.clientToFrame(r.left + r.width / 2, r.top + r.height / 2);
   };
 
   let chosen = false;
