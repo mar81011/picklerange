@@ -1,15 +1,25 @@
-// Local lane server. Phones on the venue Wi-Fi reach it directly to enter their
-// names; the game reaches it through the Vite dev proxy at /api.
+// Local lane server: the high-score database (SQLite file in data/), phone
+// name entry, and the staff page. Phones and the staff page reach it directly
+// on the venue network; the game reaches it through the Vite dev proxy at /api.
 // Run with: node server/index.ts
+import { randomInt, timingSafeEqual } from 'node:crypto';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { networkInterfaces } from 'node:os';
+import { join, resolve } from 'node:path';
 import QRCode from 'qrcode';
 import { ClaimStore } from './claims.ts';
 import { expiredPage, namePage, successPage } from './phonePage.ts';
+import { GAME_ID, ScoreDb } from './scores.ts';
+import { staffPage } from './staffPage.ts';
 
 const PORT = Number(process.env.PICKLERANGE_PORT ?? 8787);
 const MAX_BODY_BYTES = 4096;
-const GAME_ID = /^[a-z0-9-]{1,32}$/;
+/** Where the database, backups and staff PIN live. */
+const DATA_DIR = resolve(process.env.PICKLERANGE_DATA ?? 'data');
+const DB_FILE = join(DATA_DIR, 'picklerange.db');
+const BACKUP_DIR = join(DATA_DIR, 'backups');
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 /** The address phones should use. Override with PICKLERANGE_HOST if the guess is wrong. */
 function lanAddress(): string {
@@ -24,6 +34,40 @@ function lanAddress(): string {
 
 const HOST = lanAddress();
 const claims = new ClaimStore();
+const scores = new ScoreDb(DB_FILE);
+
+/**
+ * Staff PIN: PICKLERANGE_STAFF_PIN if set, otherwise a random 6-digit PIN
+ * created on first run and kept in data/staff-pin.txt.
+ */
+function staffPin(): string {
+  if (process.env.PICKLERANGE_STAFF_PIN) return process.env.PICKLERANGE_STAFF_PIN;
+  const file = join(DATA_DIR, 'staff-pin.txt');
+  if (existsSync(file)) return readFileSync(file, 'utf8').trim();
+  const pin = String(randomInt(100000, 1000000));
+  writeFileSync(file, `${pin}\n`);
+  return pin;
+}
+const STAFF_PIN = staffPin();
+
+function isStaff(req: IncomingMessage): boolean {
+  const given = Buffer.from(String(req.headers['x-staff-pin'] ?? ''));
+  const expected = Buffer.from(STAFF_PIN);
+  return given.length === expected.length && timingSafeEqual(given, expected);
+}
+
+function backupNow(): string {
+  const file = scores.backup(BACKUP_DIR, new Date());
+  console.log(`Backup saved: ${file}`);
+  return file;
+}
+
+/** Start of the leaderboard window for ?period=day|week (0 = all time). */
+function periodStart(period: string | null, now: number): number {
+  if (period === 'day') return new Date(new Date(now).toDateString()).getTime();
+  if (period === 'week') return now - 7 * DAY_MS;
+  return 0;
+}
 
 function send(res: ServerResponse, status: number, body: string, type: string): void {
   res.writeHead(status, { 'content-type': type, 'cache-control': 'no-store' });
@@ -66,7 +110,51 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
   const parts = url.pathname.split('/').filter(Boolean);
   const now = Date.now();
 
-  // Game API
+  // High scores
+  if (parts[0] === 'api' && parts[1] === 'scores' && parts.length === 2) {
+    if (req.method === 'GET') {
+      const limit = Math.min(50, Math.max(1, Number(url.searchParams.get('limit')) || 10));
+      return json(res, 200, scores.topAll(limit, periodStart(url.searchParams.get('period'), now)));
+    }
+    if (req.method === 'POST') {
+      let body: { gameId?: unknown; name?: unknown; score?: unknown; level?: unknown; at?: unknown };
+      try {
+        body = JSON.parse(await readBody(req));
+      } catch {
+        return json(res, 400, { error: 'invalid_json' });
+      }
+      const row = scores.add(
+        String(body.gameId ?? ''),
+        String(body.name ?? ''),
+        Number(body.score),
+        body.level === undefined || body.level === null ? null : Number(body.level),
+        // Trust the lane's clock only within a day of ours (offline scores sync later).
+        typeof body.at === 'number' && Math.abs(body.at - now) < DAY_MS ? body.at : now,
+      );
+      return row ? json(res, 201, row) : json(res, 400, { error: 'invalid_score' });
+    }
+  }
+
+  // Staff
+  if (parts[0] === 'staff' && parts.length === 1 && req.method === 'GET') return html(res, 200, staffPage());
+  if (parts[0] === 'api' && parts[1] === 'staff') {
+    if (!isStaff(req)) {
+      // A short pause makes guessing the PIN slow.
+      await new Promise((r) => setTimeout(r, 400));
+      return json(res, 401, { error: 'unauthorized' });
+    }
+    if (parts[2] === 'scores' && parts.length === 3 && req.method === 'GET') {
+      const since = periodStart(url.searchParams.get('period'), now);
+      return json(res, 200, { top: scores.topAll(10, since), recent: scores.recent(50), count: scores.count(), file: DB_FILE });
+    }
+    if (parts[2] === 'scores' && parts.length === 4 && req.method === 'DELETE') {
+      return scores.delete(Number(parts[3])) ? (res.writeHead(204).end(), undefined) : json(res, 404, { error: 'not_found' });
+    }
+    if (parts[2] === 'backup' && req.method === 'POST') return json(res, 200, { file: backupNow() });
+    return json(res, 404, { error: 'not_found' });
+  }
+
+  // Name claims
   if (parts[0] === 'api' && parts[1] === 'claims') {
     if (parts.length === 2 && req.method === 'POST') return createClaim(req, res);
     if (parts.length === 3) {
@@ -121,4 +209,10 @@ createServer((req, res) => {
 }).listen(PORT, '0.0.0.0', () => {
   console.log(`PickleRange lane server on port ${PORT}`);
   console.log(`Phones will open: http://${HOST}:${PORT}/n/<code>`);
+  console.log(`Scores database: ${DB_FILE} (${scores.count()} scores)`);
+  console.log(`Staff page: http://${HOST}:${PORT}/staff  (PIN: ${STAFF_PIN})`);
 });
+
+// Back up at startup and then once a day; the newest 14 backups are kept.
+backupNow();
+setInterval(backupNow, DAY_MS);

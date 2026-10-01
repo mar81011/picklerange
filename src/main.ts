@@ -9,6 +9,7 @@ import { preloadOpponent } from './engine/opponent';
 import { ZOMBIE_MODEL } from './screens/zombies';
 import { attachPointerSimulator } from './input/hitEvents';
 import { music } from './audio/music';
+import { scoreStore } from './services';
 import { installPickleballIcon } from './ui/pickleballIcon';
 
 /** Small message in the corner, e.g. after toggling music. */
@@ -52,7 +53,8 @@ function start(): void {
   }
 }
 
-// Canvas textures (boards, banners) bake text in once, so fonts must load first.
-Promise.all([document.fonts.load('64px "Bebas Neue"'), document.fonts.load('bold 24px "Barlow Condensed"')])
+// Canvas textures bake text in once, so fonts must load first; the menu shows best
+// scores, so load those from the lane server too (refresh never throws or hangs).
+Promise.all([document.fonts.load('64px "Bebas Neue"'), document.fonts.load('bold 24px "Barlow Condensed"'), scoreStore.refresh()])
   .catch(() => undefined)
   .finally(start);

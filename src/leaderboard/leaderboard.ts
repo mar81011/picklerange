@@ -14,6 +14,8 @@ export interface LeaderboardEntry {
 export interface LeaderboardStore {
   load(gameId: string): LeaderboardEntry[];
   save(gameId: string, entries: LeaderboardEntry[]): void;
+  /** Told about each new score, e.g. to send it to the lane server's database. */
+  added?(gameId: string, entry: LeaderboardEntry): void;
 }
 
 /** Higher score first; on ties the earlier score keeps the higher rank. */
@@ -46,6 +48,7 @@ export class Leaderboard {
     const entry: LeaderboardEntry = level === undefined ? { name, score, at } : { name, score, at, level };
     const entries = [...this.top(gameId), entry].sort(compareEntries).slice(0, this.maxEntries);
     this.store.save(gameId, entries);
+    this.store.added?.(gameId, entry);
     return entries.indexOf(entry) + 1;
   }
 }

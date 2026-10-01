@@ -123,6 +123,16 @@ export function gameOverScreen(app: App, scope: Scope, result: RoundResult): voi
     };
     window.addEventListener('keydown', onKey);
     scope.onDispose(() => window.removeEventListener('keydown', onKey));
+
+    // Without a keyboard (e.g. the online demo on a tablet) nobody can press
+    // Enter, so save after a while: whatever was typed, or GUEST.
+    const countdown = text('label muted', '', 790, 26);
+    let secondsLeft = NAME_WAIT_SECONDS;
+    const stop = scope.every(1000, () => {
+      if (saved) return stop();
+      countdown.textContent = `Saves as ${sanitizeName(typed) ?? GUEST_NAME} in ${secondsLeft}s`;
+      if (secondsLeft-- <= 0) saveScore(sanitizeName(typed) ?? GUEST_NAME);
+    });
   };
 
   if (!leaderboard.qualifies(result.gameId, result.score)) {

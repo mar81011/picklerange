@@ -42,6 +42,22 @@ npm run dev        # game on http://localhost:5173 + lane server on :8787
 - `src/screens/` – each game's 3D/HTML presentation; `src/engine/` – Three.js
   stage, environments and props; `src/audio/` – generated music and sound effects.
 - `server/` – lane server: phone QR name entry for the high-score table.
-- High scores are stored in the browser on the lane PC (`localStorage`).
+- `server/scores.ts` – high scores in a SQLite file (`data/picklerange.db`, built into
+  Node — free, no install). Backed up at startup and daily to `data/backups/`
+  (newest 14 kept). The game keeps a local copy and queues scores while the
+  server is unreachable, then sends them.
+
+## Staff page
+
+Open `http://<lane-pc-ip>:8787/staff` on any device on the venue network to
+view, filter and delete scores or make a backup. The PIN is printed when the
+lane server starts and stored in `data/staff-pin.txt` (or set
+`PICKLERANGE_STAFF_PIN`).
+
+## Online demo (Vercel)
+
+`vercel.json` deploys the games as a static site. Vercel has no lane server,
+so the demo saves scores in the visitor's browser and asks for names on the
+keyboard (auto-saving as GUEST after 45 s). The venue runs the full local setup.
 
 3D models in `public/models` are CC0 by Quaternius (see `CREDITS.md`).

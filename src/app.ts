@@ -1,6 +1,7 @@
 // Switches between screens. Each screen gets a fresh Scope, and the previous
 // screen's scope is disposed, so nothing leaks between screens.
 import { music } from './audio/music';
+import { scoreStore } from './services';
 import type { Vec3 } from './core/geometry';
 import { Scope } from './engine/scope';
 import type { World } from './engine/env/world';
@@ -62,6 +63,8 @@ export class App {
 
   play(id: GameId): void {
     music.play(id);
+    // Pick up new or staff-deleted scores while the game plays.
+    void scoreStore.refresh();
     this.show((scope) => SCREENS[id](this, scope));
   }
 
