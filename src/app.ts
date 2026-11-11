@@ -48,8 +48,10 @@ export class App {
     readonly world: World,
   ) {}
 
-  private show(render: (scope: Scope) => void): void {
+  private show(render: (scope: Scope) => void, onMenu = false): void {
     this.scope?.dispose();
+    // Hides the HOME button on the menu itself.
+    this.stage.frame.classList.toggle('on-menu', onMenu);
     this.debugAim = null;
     this.debugAimScreen = null;
     this.scope = new Scope(this.stage);
@@ -58,7 +60,7 @@ export class App {
 
   menu(): void {
     music.play('menu');
-    this.show((scope) => menuScreen(this, scope));
+    this.show((scope) => menuScreen(this, scope), true);
   }
 
   play(id: GameId): void {

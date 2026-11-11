@@ -605,6 +605,29 @@ body {
   border-color: transparent;
 }
 
+/* ---------- HOME button (every screen but the menu) ---------- */
+
+.home-button {
+  position: absolute;
+  /* Top-left corner: clear of the scoreboard, the player scores and the touch buttons. */
+  left: max(10px, env(safe-area-inset-left));
+  top: max(10px, env(safe-area-inset-top));
+  z-index: 20;
+  height: 44px;
+  padding: 0 16px;
+  border-radius: 22px;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  background: rgba(5, 8, 15, 0.65);
+  color: #fff;
+  font-size: 18px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.home-button:hover { border-color: var(--neon); color: var(--neon); }
+.frame.on-menu .home-button { display: none; }
+
 /* ---------- Phones and tablets ---------- */
 
 /* Small round buttons (touch screens only; the venue wall never shows them). */
