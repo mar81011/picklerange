@@ -231,7 +231,7 @@ body {
 .qr {
   position: absolute;
   left: 110px;
-  top: 500px;
+  top: 468px;
   width: 340px;
   height: 340px;
   padding: 14px;
@@ -241,7 +241,32 @@ body {
 
 .qr img { width: 100%; height: 100%; image-rendering: pixelated; }
 
-.qr-text { position: absolute; left: 510px; top: 520px; }
+.qr-text { position: absolute; left: 510px; top: 480px; }
+
+/* Score-card QR, beside the high-score table */
+.card-qr {
+  left: 1510px;
+  top: 250px;
+  width: 370px;
+  padding: 26px 0 24px;
+  text-align: center;
+  animation: banner-in 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+.card-qr .display { font-size: 52px; }
+.card-qr .label { font-size: 28px; color: #fff; }
+
+.card-qr .qr-box {
+  width: 280px;
+  height: 280px;
+  margin: 14px auto 16px;
+  padding: 12px;
+  box-sizing: border-box;
+  background: #fff;
+  border-radius: 16px;
+}
+
+.card-qr .qr-box img { width: 100%; height: 100%; image-rendering: pixelated; }
 
 .name-box {
   position: absolute;
@@ -264,8 +289,8 @@ body {
   display: grid;
   grid-template-columns: 110px 1fr 110px 180px;
   align-items: center;
-  height: 56px;
-  margin-bottom: 8px;
+  height: 52px;
+  margin-bottom: 6px;
   padding: 0 40px;
   border-radius: 12px;
   font-family: var(--display);
@@ -647,4 +672,108 @@ body {
   font-size: 64px;
   pointer-events: auto;
   cursor: pointer;
+}
+
+/* Staff key S on the menu: QR to the staff page */
+.staff-qr {
+  z-index: 5;
+  left: 660px;
+  top: 190px;
+  width: 600px;
+  padding: 30px 20px;
+  text-align: center;
+}
+
+.staff-qr .display { font-size: 64px; }
+.staff-qr .label { font-size: 28px; margin-top: 6px; }
+
+.staff-qr .qr-box {
+  width: 380px;
+  height: 380px;
+  margin: 16px auto;
+  padding: 14px;
+  box-sizing: border-box;
+  background: #fff;
+  border-radius: 18px;
+}
+
+.staff-qr .qr-box img { width: 100%; height: 100%; image-rendering: pixelated; }
+
+/* Intro card with how-to-play pictures (first level, party games) */
+.intro-card.with-pictures {
+  left: 160px;
+  top: 60px;
+  width: 1600px;
+  padding-top: 36px;
+}
+
+.intro-card.with-pictures .title { font-size: 100px; }
+.intro-card.with-pictures .howto { font-size: 34px; }
+.intro-card.with-pictures .count { font-size: 130px; margin-top: 0; }
+
+.legend {
+  display: flex;
+  justify-content: center;
+  gap: 26px;
+  margin-top: 26px;
+}
+
+.legend-item {
+  width: 300px;
+  padding: 18px 10px 16px;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 2px solid rgba(255, 255, 255, 0.12);
+}
+
+.legend-item.good { border-color: rgba(212, 245, 60, 0.55); }
+.legend-item.bad { border-color: rgba(255, 107, 107, 0.7); }
+.legend-item .art svg { width: 120px; height: 120px; display: block; margin: 0 auto; }
+.legend-item .what { font-size: 30px; margin-top: 8px; color: #fff; }
+.legend-item .worth { font-size: 46px; line-height: 1.1; color: var(--neon); }
+.legend-item.bad .worth { color: var(--red); }
+.legend-item.plain .worth { color: #fff; }
+
+/* PLAY AGAIN / MENU targets at the bottom of the game-over card */
+.end-choices {
+  position: absolute;
+  left: 60px;
+  right: 60px;
+  top: 864px;
+  display: grid;
+  grid-template-columns: 1.4fr 1fr;
+  gap: 28px;
+}
+
+.end-choice {
+  height: 84px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 18px;
+  font-size: 58px;
+  color: #fff;
+  background: rgba(255, 255, 255, 0.08);
+  border: 4px solid #9fb0cf;
+  transition: transform 0.15s ease;
+}
+
+.end-choice.again {
+  color: var(--ink);
+  background: var(--neon);
+  border-color: var(--neon);
+  box-shadow: 0 0 30px rgba(212, 245, 60, 0.45);
+  text-shadow: none;
+}
+
+.end-choice.chosen { transform: scale(1.06); }
+
+/* Open Court: the robot's name tag */
+.opponent-tag {
+  font-size: 44px;
+  color: #fff;
+  padding: 2px 16px 0;
+  border-radius: 12px;
+  background: rgba(255, 90, 95, 0.85);
+  text-shadow: none;
 }

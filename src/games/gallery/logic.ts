@@ -11,9 +11,10 @@ export interface Rail {
   dir: 1 | -1;
 }
 
+/** Plate heights keep the back row below the scoreboard and level bar, and the rows from overlapping. */
 export const RAILS: readonly Rail[] = [
-  { z: -5.6, y: 1.55, dir: 1 },
-  { z: -4.2, y: 1.1, dir: -1 },
+  { z: -5.6, y: 0.95, dir: 1 },
+  { z: -4.2, y: 0.85, dir: -1 },
   { z: -2.8, y: 0.65, dir: 1 },
 ];
 

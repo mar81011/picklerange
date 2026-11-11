@@ -122,6 +122,7 @@ function playLevel(app: App, ctx: LevelContext, zombieModel: GLTF): Promise<Leve
         await ballFlight(scope, at, 200);
         music.sfx('miss');
         burst(scope, at, 0xffffff, 0.1);
+        floatText(scope, at, 'MISS', 'muted', 64);
         return;
       }
       await ballFlight(scope, result.at, 200);

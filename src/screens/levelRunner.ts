@@ -65,7 +65,7 @@ export async function runLevels(app: App, scope: Scope, run: LevelRun): Promise<
 
     const goal = level.target !== null ? `SCORE ${level.target} TO PASS` : (level.goal ?? '').toUpperCase();
     const howTo = index === 0 ? `${info.howTo}\n\n${level.description}` : level.description;
-    await introCard(levelScope, level.name.toUpperCase(), howTo, goal, `${info.title} • Level ${index + 1} of ${count}`);
+    await introCard(levelScope, level.name.toUpperCase(), howTo, goal, `${info.title} • Level ${index + 1} of ${count}`, true, index === 0 ? run.gameId : null);
     if (!scope.alive) return;
 
     const setProgress = levelPill(levelScope, index, count, level);

@@ -67,6 +67,17 @@ describe('ServerStore', () => {
     expect(store.load('bricks')).toEqual([]);
   });
 
+  it('forgets scores that only ever lived in this browser once the server answers', async () => {
+    const server = fakeServer();
+    const local = new MemoryStore();
+    local.save('popup', [{ name: 'OLD', score: 999, at: 1 }]);
+    const store = new ServerStore(local, memoryStorage(), server.fetcher, '/api', ['popup']);
+    expect(store.load('popup')).toHaveLength(1); // offline: the browser copy is all there is
+    await store.refresh();
+    expect(store.load('popup')).toEqual([]);
+    expect(local.load('popup')).toEqual([]);
+  });
+
   it('drops a score the server rejects instead of retrying forever', async () => {
     const server = fakeServer();
     const store = new ServerStore(new MemoryStore(), memoryStorage(), server.fetcher);

@@ -20,7 +20,8 @@ npm install
 npm run dev        # game on http://localhost:5173 + lane server on :8787
 ```
 
-- **F** – fullscreen, **M** – music on/off, number keys – start a game from the menu.
+- **F** – fullscreen, **M** – music on/off, number keys – start a game from the menu,
+  **S** (on the menu) – show a QR code for the staff page.
 - `?camera=max` – bigger court (tall objects near the back may be cut off).
 - `?fps` – frame-rate readout. `?level=N` (dev only) – jump to level N.
 - For the venue PC, use Chrome or Edge with graphics acceleration on, e.g.
@@ -49,10 +50,31 @@ npm run dev        # game on http://localhost:5173 + lane server on :8787
 
 ## Staff page
 
-Open `http://<lane-pc-ip>:8787/staff` on any device on the venue network to
-view, filter and delete scores or make a backup. The PIN is printed when the
-lane server starts and stored in `data/staff-pin.txt` (or set
-`PICKLERANGE_STAFF_PIN`).
+The lane server must be running (`npm run dev` starts it). Then either:
+
+- on the lane PC, open `http://localhost:5173/staff` (same address as the game;
+  `http://localhost:8787/staff` works too), or
+- on a phone on the venue Wi-Fi, press **S** on the game menu and scan the QR
+  code (or open `http://<lane-pc-ip>:8787/staff`; the address is printed when the
+  lane server starts).
+
+Enter the PIN, which is printed when the lane server starts and stored in
+`data/staff-pin.txt` (or set `PICKLERANGE_STAFF_PIN`). From there you can view
+and delete single scores, make a backup, and **reset the leaderboards** (all
+games or one game, e.g. for a new venue). A reset asks you to type DELETE and
+saves a `…-before-reset.db` backup first; the wall picks up the change within a
+minute.
+
+## Score cards and how-to pictures
+
+- At the end of every solo run the high-score screen shows a **score card** QR. It
+  opens a picture of the score on the player's phone (name, game, level, date) to
+  save or download and share. A player who enters a name by phone also gets a
+  "Get my score card" button there. Cards are kept in memory for 6 hours. Phones
+  must be on the venue Wi-Fi, as with name entry; the online demo shows no card.
+- Level 1 of each game (and each party game) shows pictures of what to hit, what
+  it scores and what to avoid (`src/ui/howToPlay.ts`). Point values come from the
+  game rules, so they stay correct after retuning.
 
 ## Online demo (Vercel)
 

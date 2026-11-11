@@ -1,10 +1,15 @@
 // Arcade-style game select. Each game is a numbered card; hit a card with the
-// ball (or staff can type its number) to start it. Cards are HTML laid over a
+// ball (or staff can type its number) to start it; S shows the staff page QR. Cards are HTML laid over a
 // dimmed stadium, and hits are matched against their on-screen rectangles.
 import type { App } from '../app';
 import type { Scope } from '../engine/scope';
 import { GAMES, type GameId, type GameInfo } from '../games';
-import { leaderboard } from '../services';
+import { elementAt, elementCenter } from './common';
+import { staffLink } from '../leaderboard/scoreCards';
+import { leaderboard, scoreStore } from '../services';
+
+/** How often the idle menu reloads best scores (so staff deletions show up). */
+const REFRESH_MS = 60_000;
 
 const ICONS: Record<GameId, string> = {
   bullseye: '🏹',
@@ -34,9 +39,35 @@ function card(scope: Scope, parent: HTMLElement, game: GameInfo, number: number)
   scope.el('div', 'icon', el, ICONS[game.id]);
   scope.el('div', 'title display', el, game.title);
   scope.el('div', 'chip', el, playersLabel(game));
-  const best = game.mode === 'solo' ? leaderboard.top(game.id, 1)[0] : undefined;
-  scope.el('div', 'best', el, best ? `🏆 ${best.name}  ${best.score}` : game.mode === 'solo' ? 'NO SCORE YET' : '');
+  scope.el('div', 'best', el, bestText(game));
   return el;
+}
+
+function bestText(game: GameInfo): string {
+  if (game.mode !== 'solo') return '';
+  const best = leaderboard.top(game.id, 1)[0];
+  return best ? `🏆 ${best.name}  ${best.score}` : 'NO SCORE YET';
+}
+
+/** Staff key S: a QR to open the staff page on a phone. Press S again to hide it. */
+function toggleStaffQr(scope: Scope): void {
+  const open = scope.layer.querySelector('.staff-qr');
+  if (open) return open.remove();
+  const panel = scope.el('div', 'panel staff-qr');
+  scope.el('div', 'display neon', panel, 'STAFF PAGE');
+  const body = scope.el('div', 'label', panel, 'Loading…');
+  void staffLink().then((link) => {
+    if (!scope.alive) return;
+    if (!link) {
+      body.textContent = 'Lane server is not running';
+      return;
+    }
+    body.remove();
+    const box = scope.el('div', 'qr-box', panel);
+    scope.el('img', '', box).src = link.qr;
+    scope.el('div', 'label', panel, link.url);
+    scope.el('div', 'label muted', panel, 'PIN is in data/staff-pin.txt • S to hide');
+  });
 }
 
 export function menuScreen(app: App, scope: Scope): void {
@@ -62,6 +93,14 @@ export function menuScreen(app: App, scope: Scope): void {
   const grid = scope.el('div', 'game-grid');
   const cards = GAMES.map((game, i) => card(scope, grid, game, i + 1));
 
+  // Reload best scores now and then, so new records and staff deletions show up.
+  const refreshBest = () =>
+    void scoreStore.refresh().then(() => {
+      if (!scope.alive) return;
+      GAMES.forEach((game, i) => (cards[i].querySelector('.best')!.textContent = bestText(game)));
+    });
+  scope.every(REFRESH_MS, refreshBest);
+
   // Attract mode: a glow travels across the cards.
   let lit = 0;
   scope.every(1100, () => {
@@ -70,26 +109,7 @@ export function menuScreen(app: App, scope: Scope): void {
     cards[lit].classList.add('lit');
   });
 
-  /**
-   * Card under a hit (normalized game coordinates). Compared in window pixels:
-   * when the game is turned 90° on an upright phone, each card's on-screen
-   * rectangle is still exact, just rotated into place.
-   */
-  const cardAt = (x: number, y: number): number => {
-    const client = app.stage.frameToClient(x, y);
-    const px = client.x * window.innerWidth;
-    const py = client.y * window.innerHeight;
-    return cards.findIndex((c) => {
-      const r = c.getBoundingClientRect();
-      return px >= r.left && px <= r.right && py >= r.top && py <= r.bottom;
-    });
-  };
-
-  app.debugAimScreen = (key) => {
-    const index = Math.max(0, GAMES.findIndex((g) => g.id === key));
-    const r = cards[index].getBoundingClientRect();
-    return app.stage.clientToFrame(r.left + r.width / 2, r.top + r.height / 2);
-  };
+  app.debugAimScreen = (key) => elementCenter(app.stage, cards[Math.max(0, GAMES.findIndex((g) => g.id === key))]);
 
   let chosen = false;
   const start = (index: number) => {
@@ -100,12 +120,13 @@ export function menuScreen(app: App, scope: Scope): void {
     scope.after(550, () => app.play(GAMES[index].id));
   };
 
-  scope.onHit((hit) => start(cardAt(hit.x, hit.y)));
+  scope.onHit((hit) => start(elementAt(app.stage, hit.x, hit.y, cards)));
 
   // Staff shortcut: type the game number. Two digits typed quickly make 10.
   let typed = '';
   let typedAt = 0;
   const onKey = (e: KeyboardEvent) => {
+    if (e.key === 's' || e.key === 'S') return toggleStaffQr(scope);
     if (!/^[0-9]$/.test(e.key)) return;
     const now = performance.now();
     typed = now - typedAt < 700 ? typed + e.key : e.key;

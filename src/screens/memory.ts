@@ -4,6 +4,7 @@ import type { App } from '../app';
 import { tileAt, tileCenter, type TileGrid } from '../core/grid';
 import { ballFlight, burst, floatText } from '../engine/effects';
 import { createTile, panelFace, redrawTile } from '../engine/gameProps';
+import { MEMORY_CARDS, drawMemoryFront } from '../engine/memoryCards';
 import { easeInCubic, easeOutCubic, type Scope } from '../engine/scope';
 import { gameInfo } from '../games';
 import { createMemory, flip, isOver, winner } from '../games/memory/logic';
@@ -13,15 +14,6 @@ import { PLAYER_COLORS, PLAYER_HEX, partyEnd, playerBar, playerName, turnBanner 
 
 // As big as the screen allows: just behind the net, top row right under the player scores.
 const GRID: TileGrid = { cols: 4, rows: 3, tileWidth: 1.68, tileHeight: 1.33, gap: 0.12, baseY: 0.15, z: -0.4 };
-const SYMBOLS = [
-  { glyph: '★', color: '#ffd23f' },
-  { glyph: '♥', color: '#ff4d6d' },
-  { glyph: '♦', color: '#3ff5ff' },
-  { glyph: '♣', color: '#7cff6b' },
-  { glyph: '♠', color: '#c77dff' },
-  { glyph: '●', color: '#d4f53c' },
-];
-
 const BACK_FRAME = 0x6a3fb5;
 
 /** Card back: a pickleball pattern with a big question mark. */
@@ -53,24 +45,13 @@ function drawBack(ctx: CanvasRenderingContext2D, w: number, h: number): void {
 }
 
 function drawFront(symbol: number, owner: number | null) {
-  return (ctx: CanvasRenderingContext2D, w: number, h: number) => {
-    panelFace(ctx, w, h, '#fbf8ff', owner === null ? '#c77dff' : PLAYER_COLORS[owner]);
-    const s = SYMBOLS[symbol];
-    ctx.fillStyle = s.color;
-    ctx.strokeStyle = '#1a1440';
-    ctx.lineWidth = 6;
-    ctx.font = '190px "Segoe UI Symbol", "Noto Sans Symbols", sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.strokeText(s.glyph, w / 2, h / 2 + 10);
-    ctx.fillText(s.glyph, w / 2, h / 2 + 10);
-  };
+  return (ctx: CanvasRenderingContext2D, w: number, h: number) => drawMemoryFront(ctx, w, h, symbol, owner === null ? null : PLAYER_COLORS[owner]);
 }
 
 export function memoryScreen(app: App, scope: Scope): void {
   app.world.show('lodge');
   const info = gameInfo('memory');
-  let state = createMemory(SYMBOLS.length, Math.random);
+  let state = createMemory(MEMORY_CARDS.length, Math.random);
   let ready = false;
 
   const center = (i: number) => tileCenter(GRID, i % GRID.cols, Math.floor(i / GRID.cols));
@@ -78,6 +59,8 @@ export function memoryScreen(app: App, scope: Scope): void {
     const tile = scope.add(createTile(GRID.tileWidth, GRID.tileHeight, drawBack, BACK_FRAME));
     const c = center(i);
     tile.position.set(c.x, c.y, c.z);
+    // The lodge is bright snow; dim the print so the card colors don't wash out.
+    ((tile.userData.face as THREE.Mesh).material as THREE.MeshStandardMaterial).color.setScalar(0.55);
     return tile;
   });
 
@@ -101,7 +84,7 @@ export function memoryScreen(app: App, scope: Scope): void {
     return pick === undefined ? null : center(pick);
   };
 
-  void introCard(scope, info.title, info.howTo, undefined, undefined, false).then(async () => {
+  void introCard(scope, info.title, info.howTo, undefined, undefined, false, info.id).then(async () => {
     await turnBanner(scope, state.turn);
     ready = true;
   });

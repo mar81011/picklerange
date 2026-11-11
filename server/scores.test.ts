@@ -58,6 +58,16 @@ describe('ScoreDb', () => {
     expect(db.count()).toBe(1);
   });
 
+  it('deletes all scores, or one game’s', () => {
+    db.add('bullseye', 'a', 10, null, 0);
+    db.add('bullseye', 'b', 20, null, 0);
+    db.add('popup', 'c', 30, null, 0);
+    expect(db.deleteAll('bullseye')).toBe(2);
+    expect(Object.keys(db.topAll(10))).toEqual(['popup']);
+    expect(db.deleteAll()).toBe(1);
+    expect(db.count()).toBe(0);
+  });
+
   it('writes backups and keeps only the newest ones', () => {
     const dir = mkdtempSync(join(tmpdir(), 'picklerange-backup-'));
     try {

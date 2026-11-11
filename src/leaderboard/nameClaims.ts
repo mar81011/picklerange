@@ -17,12 +17,13 @@ export interface ClaimStatus {
 
 const TIMEOUT_MS = 4000;
 
-export async function openNameClaim(gameId: string, score: number): Promise<NameClaim | null> {
+/** cardCode links the claim to the run's score card, so the card gets the name too. */
+export async function openNameClaim(gameId: string, score: number, cardCode?: string): Promise<NameClaim | null> {
   try {
     const res = await fetch('/api/claims', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ gameId, score }),
+      body: JSON.stringify({ gameId, score, cardCode }),
       signal: AbortSignal.timeout(TIMEOUT_MS),
     });
     return res.ok ? ((await res.json()) as NameClaim) : null;

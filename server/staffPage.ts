@@ -1,16 +1,10 @@
 // Staff page served by the lane server at /staff: enter the PIN, then view and
-// delete scores and make a backup. Plain HTML plus a little script; the PIN is
-// sent with each request and kept only for this browser tab.
+// delete scores, reset the leaderboards and make a backup. Plain HTML plus a
+// little script; the PIN is sent with each request and kept only for this browser tab.
+import { GAMES } from '../src/games.ts';
 
-const GAME_TITLES: Record<string, string> = {
-  bullseye: 'Bullseye',
-  popup: 'Pop-Up',
-  opencourt: 'Open Court',
-  bricks: 'Brick Breaker',
-  zombies: 'Zombie Court',
-  gallery: 'Firing Range',
-  rally: 'Rally Survival',
-};
+/** Games with leaderboards (party games have none). */
+const GAME_TITLES = Object.fromEntries(GAMES.filter((g) => g.mode === 'solo').map((g) => [g.id, g.title]));
 
 export function staffPage(): string {
   return `<!doctype html>
@@ -42,6 +36,8 @@ export function staffPage(): string {
   .muted { color: var(--muted); }
   #msg { min-height: 22px; color: var(--neon); }
   .hidden { display: none; }
+  .danger-zone { border-color: rgba(255,138,138,.35); }
+  .danger-zone p { margin: 0 0 12px; }
 </style>
 </head>
 <body><main>
@@ -71,6 +67,14 @@ export function staffPage(): string {
     <div class="grid" id="boards"></div>
     <h2>Latest scores</h2>
     <div class="card"><table><thead><tr><th>When</th><th>Game</th><th>Name</th><th class="num">Score</th><th>Level</th><th></th></tr></thead><tbody id="recent"></tbody></table></div>
+    <h2>Reset leaderboards</h2>
+    <div class="card danger-zone">
+      <p class="muted">Start fresh, e.g. for a new venue or a new season. A backup is saved first, so nothing is lost for good.</p>
+      <div class="bar" style="margin:0">
+        <select id="resetGame"><option value="">All games</option></select>
+        <button id="reset" class="danger">Delete scores…</button>
+      </div>
+    </div>
   </section>
 </main>
 <script>
@@ -108,7 +112,7 @@ function deleteButton(row) {
   b.onclick = async () => {
     if (!confirm('Delete ' + row.name + ' — ' + row.score + ' (' + (TITLES[row.gameId] || row.gameId) + ')?')) return;
     await api('/api/staff/scores/' + row.id, { method: 'DELETE' });
-    $('msg').textContent = 'Deleted. The lane updates when the next game starts.';
+    $('msg').textContent = 'Deleted. The wall updates within a minute.';
     load();
   };
   return b;
@@ -174,6 +178,17 @@ $('login').onsubmit = async (e) => {
 $('refresh').onclick = load;
 $('period').onchange = load;
 $('lock').onclick = () => lock();
+for (const [gameId, title] of Object.entries(TITLES)) $('resetGame').add(new Option(title, gameId));
+$('reset').onclick = async () => {
+  const gameId = $('resetGame').value;
+  const what = gameId ? 'all ' + TITLES[gameId] + ' scores' : 'ALL scores for every game';
+  const typed = prompt('This deletes ' + what + '.\\nA backup is saved first.\\n\\nType DELETE to confirm:');
+  if (typed === null) return;
+  if (typed.trim().toUpperCase() !== 'DELETE') { $('msg').textContent = 'Nothing deleted (you did not type DELETE).'; return; }
+  const r = await api('/api/staff/reset', { method: 'POST', body: JSON.stringify(gameId ? { gameId } : {}) });
+  $('msg').textContent = 'Deleted ' + r.deleted + ' scores. Backup: ' + r.backup + '. The wall updates within a minute.';
+  load();
+};
 $('backup').onclick = async () => {
   const r = await api('/api/staff/backup', { method: 'POST' });
   $('msg').textContent = 'Backup saved: ' + r.file;

@@ -14,12 +14,12 @@ import { installPickleballIcon } from './ui/pickleballIcon';
 import { installTouchUi } from './ui/touch';
 
 /** Small message in the corner, e.g. after toggling music. */
-function toast(parent: HTMLElement, text: string): void {
+function toast(parent: HTMLElement, text: string, ms = 1400): void {
   const el = document.createElement('div');
   el.className = 'toast';
   el.textContent = text;
   parent.appendChild(el);
-  setTimeout(() => el.remove(), 1400);
+  setTimeout(() => el.remove(), ms);
 }
 
 function start(): void {
@@ -40,11 +40,14 @@ function start(): void {
   void preloadOpponent().catch((err) => console.error('Opponent model failed to load', err));
   void loadModel(ZOMBIE_MODEL).catch((err) => console.error('Zombie model failed to load', err));
   app.menu();
+  // The mute setting is remembered, so say so; otherwise silence looks like a bug.
+  if (music.isMuted) toast(stage.frame, 'MUSIC OFF • PRESS M', 6000);
 
   // Dev builds only: lets automated playthroughs find something to hit.
   if (import.meta.env.DEV) {
     Object.assign(window, {
       __app: app,
+      __music: music,
       __aim: (key?: string) => {
         // Answers in window fractions, so automated taps land right even when the game is rotated.
         const world = app.debugAimScreen ? null : app.debugAim?.(key);

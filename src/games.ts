@@ -1,5 +1,8 @@
 // The game catalog shown on the menu.
 
+/** Open Court's robot opponent. */
+export const OPPONENT_NAME = 'BEN JAMS';
+
 export type GameId =
   | 'bullseye'
   | 'popup'
@@ -44,8 +47,8 @@ export const GAMES: readonly GameInfo[] = [
   {
     id: 'opencourt',
     title: 'OPEN COURT',
-    tagline: '5 levels • beat the robot',
-    howTo: 'Place your shot where the opponent can’t reach.\nThe farther from them, the more points. Drop shots into the kitchen earn a bonus!',
+    tagline: '5 levels • beat Ben Jams',
+    howTo: 'Place your shot where Ben Jams the robot can’t reach.\nThe farther from him, the more points. Drop shots into the kitchen earn a bonus!',
     accent: '#ff5a5f',
     mode: 'solo',
   },

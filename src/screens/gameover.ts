@@ -1,15 +1,22 @@
-// Round result, phone-QR name entry, and the high-score table.
+// Round result, phone-QR name entry, the high-score table, and a QR for the
+// player's score card (a picture of their score to save on their phone).
+// PLAY AGAIN / MENU targets at the bottom of the card leave at any time; they
+// are targets rather than "hit anywhere" so a stray ball can't skip name entry.
 import type { App } from '../app';
 import type { Scope } from '../engine/scope';
 import { gameInfo, type RoundResult } from '../games';
 import { cancelNameClaim, checkNameClaim, openNameClaim, type NameClaim } from '../leaderboard/nameClaims';
 import { MAX_NAME_LENGTH, sanitizeName } from '../leaderboard/names';
+import { openScoreCard, type ScoreCard } from '../leaderboard/scoreCards';
 import { leaderboard } from '../services';
 import { isTouchDevice } from '../ui/touch';
+import { elementAt, elementCenter } from './common';
 
-/** Ignore hits right after the round ends so a late ball doesn't skip this screen. */
+/** Ignore hits right after the targets appear so a late ball from the round can't pick one. */
 const HIT_GRACE_MS = 1500;
 const RETURN_TO_MENU_MS = 15000;
+/** Longer when a score-card QR is up, so there's time to get a phone out. */
+const RETURN_TO_MENU_WITH_CARD_MS = 30000;
 /** How long to wait for a phone before saving the score under GUEST_NAME. */
 const NAME_WAIT_SECONDS = 45;
 const GUEST_NAME = 'GUEST';
@@ -21,6 +28,8 @@ export function gameOverScreen(app: App, scope: Scope, result: RoundResult): voi
   const card = scope.el('div', 'panel card');
   let view = scope.el('div', 'layer', card);
   let saved = false;
+  const qualifies = leaderboard.qualifies(result.gameId, result.score);
+  const cardReady = openScoreCard(result, qualifies);
 
   const text = (cls: string, value: string, top: number, size: number, parent = view) => {
     const el = scope.el('div', `center ${cls}`, parent, value);
@@ -34,11 +43,36 @@ export function gameOverScreen(app: App, scope: Scope, result: RoundResult): voi
     view = scope.el('div', 'layer', card);
   };
 
-  const saveScore = (name: string) => {
+  /** show = false when the player is leaving (PLAY AGAIN / MENU) instead of waiting for the table. */
+  const saveScore = (name: string, show = true) => {
     if (saved) return;
     saved = true;
     const rank = leaderboard.submit(result.gameId, name, result.score, Date.now(), result.level);
-    showLeaderboard(rank);
+    if (show) showLeaderboard(rank);
+  };
+
+  /**
+   * PLAY AGAIN / MENU targets at the bottom of the current view. beforeLeave
+   * runs first, e.g. to save the score as GUEST when name entry is skipped.
+   */
+  let leaving = false;
+  const addChoices = (beforeLeave?: () => void) => {
+    const row = scope.el('div', 'end-choices', view);
+    const again = scope.el('div', 'end-choice again display', row, 'PLAY AGAIN');
+    const menu = scope.el('div', 'end-choice display', row, 'MENU');
+    const targets = [again, menu];
+    app.debugAimScreen = (key) => elementCenter(app.stage, key === 'menu' ? menu : again);
+    const shownAt = performance.now();
+    scope.onHit((hit) => {
+      if (leaving || performance.now() - shownAt < HIT_GRACE_MS) return;
+      const index = elementAt(app.stage, hit.x, hit.y, targets);
+      if (index < 0) return;
+      leaving = true;
+      targets[index].classList.add('chosen');
+      app.world.cheer(0.6);
+      beforeLeave?.();
+      scope.after(450, () => (index === 0 ? app.play(result.gameId) : app.menu()));
+    });
   };
 
   const showLeaderboard = (highlightRank: number | null) => {
@@ -56,13 +90,32 @@ export function gameOverScreen(app: App, scope: Scope, result: RoundResult): voi
       scope.el('div', 'lv', row, entry?.level ? `LV ${entry.level}` : '');
       scope.el('div', 'pts', row, entry ? String(entry.score) : '-');
     }
-    text('label blink', 'Hit anywhere to continue', 905, 30).style.color = '#fff';
+    addChoices();
 
     const shownAt = performance.now();
-    scope.onHit(() => {
-      if (performance.now() - shownAt >= HIT_GRACE_MS) app.menu();
+    let leaveAt = shownAt + RETURN_TO_MENU_MS;
+    const stop = scope.every(500, () => {
+      if (performance.now() >= leaveAt) {
+        stop();
+        app.menu();
+      }
     });
-    scope.after(RETURN_TO_MENU_MS, () => app.menu());
+    void cardReady.then((scoreCard) => {
+      if (!scoreCard || !scope.alive) return;
+      showCardQr(scoreCard);
+      leaveAt = shownAt + RETURN_TO_MENU_WITH_CARD_MS;
+    });
+  };
+
+  /** Side panel next to the high scores: scan to get your score card. */
+  const showCardQr = (scoreCard: ScoreCard) => {
+    const panel = scope.el('div', 'panel card-qr');
+    scope.el('div', 'display neon', panel, 'YOUR SCORE CARD');
+    const qr = scope.el('div', 'qr-box', panel);
+    const img = scope.el('img', '', qr);
+    img.src = scoreCard.qr;
+    img.alt = 'QR code for your score card';
+    scope.el('div', 'label', panel, 'Scan to save & share');
   };
 
   const promptPhone = (claim: NameClaim) => {
@@ -84,6 +137,11 @@ export function gameOverScreen(app: App, scope: Scope, result: RoundResult): voi
     }
     const countdown = scope.el('div', 'label muted', side);
     Object.assign(countdown.style, { fontSize: '28px', marginTop: '30px' });
+    addChoices(() => {
+      if (saved) return;
+      cancelNameClaim(claim.code);
+      saveScore(GUEST_NAME, false);
+    });
 
     let secondsLeft = NAME_WAIT_SECONDS;
     let checking = false;
@@ -137,6 +195,7 @@ export function gameOverScreen(app: App, scope: Scope, result: RoundResult): voi
       countdown.textContent = `Saves as ${sanitizeName(typed) ?? GUEST_NAME} in ${secondsLeft}s`;
       if (secondsLeft-- <= 0) saveScore(sanitizeName(typed) ?? GUEST_NAME);
     });
+    addChoices(() => saveScore(sanitizeName(typed) ?? GUEST_NAME, false));
   };
 
   /** Keyboard name entry for the lane PC: letters appear in a big box; Enter saves. */
@@ -146,6 +205,8 @@ export function gameOverScreen(app: App, scope: Scope, result: RoundResult): voi
     text('label', 'Type your name  •  press Enter', 730, 30);
     const onKey = (event: KeyboardEvent) => {
       if (saved) return;
+      // Typed letters are the name, not shortcuts (M = music, F = fullscreen).
+      event.stopImmediatePropagation();
       if (event.key === 'Enter') {
         if (sanitizeName(typed) !== null) saveScore(typed);
         return;
@@ -155,11 +216,12 @@ export function gameOverScreen(app: App, scope: Scope, result: RoundResult): voi
       box.textContent = typed || '_';
       onChange(typed);
     };
-    window.addEventListener('keydown', onKey);
-    scope.onDispose(() => window.removeEventListener('keydown', onKey));
+    // Capture phase, so this runs before the global shortcut keys and can stop them.
+    window.addEventListener('keydown', onKey, { capture: true });
+    scope.onDispose(() => window.removeEventListener('keydown', onKey, { capture: true }));
   };
 
-  if (!leaderboard.qualifies(result.gameId, result.score)) {
+  if (!qualifies) {
     showLeaderboard(null);
     return;
   }
@@ -170,7 +232,7 @@ export function gameOverScreen(app: App, scope: Scope, result: RoundResult): voi
   text('display pulse', 'NEW HIGH SCORE!', 360, 90);
   const loading = text('label', 'Getting your QR code…', 640, 30);
 
-  void openNameClaim(result.gameId, result.score).then((claim) => {
+  void cardReady.then((scoreCard) => openNameClaim(result.gameId, result.score, scoreCard?.code)).then((claim) => {
     if (!scope.alive) {
       if (claim) cancelNameClaim(claim.code);
       return;

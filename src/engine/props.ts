@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { BRICK_HP, type BrickKind } from '../games/bricks/brickLogic';
 import type { Ring } from '../games/bullseye/bullseyeLogic';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
-import { NEON, RED_HEX, canvasTexture } from './textures';
+import { NEON, RED_HEX, canvasTexture, seededRandom } from './textures';
 
 const RING_COLORS = [NEON, '#e63946', '#ffffff', '#e63946'];
 
@@ -145,68 +145,281 @@ export function createReachRing(reach: number): THREE.Mesh {
   return ring;
 }
 
-const BRICK_ROW_COLORS = [0x06d6a0, 0x118ab2, 0x8338ec, 0xff006e, 0xffb703, 0xfb5607];
+const BRICK_ROW_COLORS = [0x06d6a0, 0x2f8bff, 0x8338ec, 0xff006e, 0x00d9ff, 0xe040fb];
 
 export function brickColor(row: number): number {
   return BRICK_ROW_COLORS[row % BRICK_ROW_COLORS.length];
 }
 
-const TOUGH_STYLE = {
-  silver: { top: '#f4f7fb', bottom: '#9aa6ba', ink: '#1b2333', shell: 0xc3ccdb },
-  gold: { top: '#ffe58a', bottom: '#c98a12', ink: '#3a2400', shell: 0xd9a21b },
-} as const;
+const FACE_W = 256;
+const FACE_H = 128;
+const BEVEL = 16;
 
-/** Face textures for tough bricks, cached by kind and hits left (they never change). */
-const toughFaces = new Map<string, THREE.Texture>();
+function tint(hex: number, lightness: number): string {
+  const c = new THREE.Color(hex);
+  c.offsetHSL(0, 0, lightness);
+  return `#${c.getHexString()}`;
+}
 
-function toughFace(kind: 'silver' | 'gold', hitsLeft: number, maxHits: number): THREE.Texture {
-  const key = `${kind}-${hitsLeft}`;
-  let texture = toughFaces.get(key);
-  if (texture) return texture;
-  const style = TOUGH_STYLE[kind];
-  texture = canvasTexture(256, 128, (ctx) => {
-    const g = ctx.createLinearGradient(0, 0, 0, 128);
-    g.addColorStop(0, style.top);
-    g.addColorStop(1, style.bottom);
-    ctx.clearRect(0, 0, 256, 128);
-    ctx.fillStyle = g;
+/** Clips to the brick's outline and cuts four lit bevels around the edge, like a gem. */
+function bevelFace(ctx: CanvasRenderingContext2D, top: string, left: string, right: string, bottom: string): void {
+  ctx.clearRect(0, 0, FACE_W, FACE_H);
+  ctx.beginPath();
+  ctx.roundRect(0, 0, FACE_W, FACE_H, 16);
+  ctx.clip();
+  const facet = (color: string, points: number[][]) => {
+    ctx.fillStyle = color;
     ctx.beginPath();
-    ctx.roundRect(0, 0, 256, 128, 18);
+    points.forEach(([x, y]) => ctx.lineTo(x, y));
     ctx.fill();
-    // Rivets in the corners.
-    ctx.fillStyle = style.ink;
-    for (const [x, y] of [[16, 16], [240, 16], [16, 112], [240, 112]]) {
+  };
+  const [x1, y1] = [FACE_W - BEVEL, FACE_H - BEVEL];
+  facet(top, [[0, 0], [FACE_W, 0], [x1, BEVEL], [BEVEL, BEVEL]]);
+  facet(left, [[0, 0], [BEVEL, BEVEL], [BEVEL, y1], [0, FACE_H]]);
+  facet(right, [[FACE_W, 0], [FACE_W, FACE_H], [x1, y1], [x1, BEVEL]]);
+  facet(bottom, [[0, FACE_H], [BEVEL, y1], [x1, y1], [FACE_W, FACE_H]]);
+}
+
+/** Starts a drawing clipped to the flat panel inside the bevels. Pair with ctx.restore(). */
+function clipPanel(ctx: CanvasRenderingContext2D): void {
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(BEVEL, BEVEL, FACE_W - BEVEL * 2, FACE_H - BEVEL * 2);
+  ctx.clip();
+}
+
+/** A band of reflected light slanting across the panel. */
+function glint(ctx: CanvasRenderingContext2D, x: number, width: number, alpha: number): void {
+  ctx.fillStyle = `rgba(255,255,255,${alpha})`;
+  ctx.beginPath();
+  ctx.moveTo(x + 40, 0);
+  ctx.lineTo(x + 40 + width, 0);
+  ctx.lineTo(x + width, FACE_H);
+  ctx.lineTo(x, FACE_H);
+  ctx.fill();
+}
+
+/** A different raised pattern for each row, so rows read apart even at a glance. */
+const BRICK_MOTIFS: ((ctx: CanvasRenderingContext2D) => void)[] = [
+  // Chevrons
+  (ctx) => {
+    ctx.lineWidth = 11;
+    for (let x = 6; x < FACE_W; x += 42) {
       ctx.beginPath();
-      ctx.arc(x, y, 6, 0, Math.PI * 2);
-      ctx.fill();
-    }
-    // Cracks get worse with each hit taken.
-    ctx.strokeStyle = style.ink;
-    ctx.lineWidth = 4;
-    const cracks = [
-      [[40, 0], [62, 40], [48, 70], [70, 128]],
-      [[200, 0], [180, 36], [206, 66], [186, 128]],
-    ];
-    for (let i = 0; i < maxHits - hitsLeft && i < cracks.length; i++) {
-      ctx.beginPath();
-      cracks[i].forEach(([x, y], j) => (j ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
+      ctx.moveTo(x, 24);
+      ctx.lineTo(x + 24, 64);
+      ctx.lineTo(x, 104);
       ctx.stroke();
     }
-    ctx.fillStyle = style.ink;
-    ctx.font = '96px "Bebas Neue"';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(String(hitsLeft), 128, 72);
-  });
+  },
+  // Diamonds
+  (ctx) => {
+    for (let x = 40; x < FACE_W; x += 44) {
+      ctx.beginPath();
+      ctx.moveTo(x, 40);
+      ctx.lineTo(x + 18, 64);
+      ctx.lineTo(x, 88);
+      ctx.lineTo(x - 18, 64);
+      ctx.fill();
+    }
+  },
+  // Diagonal stripes
+  (ctx) => {
+    ctx.lineWidth = 12;
+    for (let x = -60; x < FACE_W; x += 36) {
+      ctx.beginPath();
+      ctx.moveTo(x, FACE_H);
+      ctx.lineTo(x + FACE_H * 0.7, 0);
+      ctx.stroke();
+    }
+  },
+  // Zigzag
+  (ctx) => {
+    ctx.lineWidth = 10;
+    for (const y of [48, 80]) {
+      ctx.beginPath();
+      for (let x = 0, i = 0; x <= FACE_W; x += 26, i++) ctx.lineTo(x, y + (i % 2 ? 11 : -11));
+      ctx.stroke();
+    }
+  },
+  // Dot grid
+  (ctx) => {
+    for (let y = 36; y < 100; y += 28) {
+      for (let x = 34; x < FACE_W - 20; x += 28) {
+        ctx.beginPath();
+        ctx.arc(x, y, 6.5, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+  },
+  // Triangles
+  (ctx) => {
+    for (let x = 22, i = 0; x < FACE_W; x += 26, i++) {
+      const up = i % 2 === 0;
+      ctx.beginPath();
+      ctx.moveTo(x - 20, up ? 86 : 42);
+      ctx.lineTo(x + 20, up ? 86 : 42);
+      ctx.lineTo(x, up ? 42 : 86);
+      ctx.fill();
+    }
+  },
+];
+
+function drawNormalFace(ctx: CanvasRenderingContext2D, row: number): void {
+  const color = brickColor(row);
+  bevelFace(ctx, tint(color, 0.28), tint(color, 0.12), tint(color, -0.12), tint(color, -0.2));
+  clipPanel(ctx);
+  const g = ctx.createLinearGradient(0, BEVEL, 0, FACE_H - BEVEL);
+  g.addColorStop(0, tint(color, 0.08));
+  g.addColorStop(1, tint(color, -0.1));
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, FACE_W, FACE_H);
+  ctx.fillStyle = 'rgba(255,255,255,0.2)';
+  ctx.strokeStyle = 'rgba(255,255,255,0.2)';
+  BRICK_MOTIFS[row % BRICK_MOTIFS.length](ctx);
+  glint(ctx, 44, 36, 0.24);
+  glint(ctx, 92, 10, 0.2);
+  ctx.restore();
+}
+
+const TOUGH_STYLE = {
+  silver: { bevel: ['#ffffff', '#dbe2ee', '#8a96aa', '#6f7b90'], panel: ['#eef2f8', '#aab5c7'], ink: '#1b2333', plate: '#1b2333', digit: '#ffffff', shell: 0xc3ccdb },
+  gold: { bevel: ['#fff6c4', '#ffdd70', '#b57a0c', '#8f5e06'], panel: ['#ffe58a', '#e5a311'], ink: '#4a2e00', plate: '#3a2400', digit: '#ffd23f', shell: 0xd9a21b },
+} as const;
+
+/** Cracks get worse with each hit taken. Each one is a main line plus branches. */
+const BRICK_CRACKS = [
+  [[[56, 0], [74, 30], [60, 54], [84, 76], [70, 104], [88, 128]], [[60, 54], [36, 62], [24, 88]], [[84, 76], [100, 70]]],
+  [[[206, 0], [186, 32], [200, 60], [174, 82], [192, 128]], [[200, 60], [226, 52], [240, 30]], [[174, 82], [160, 96]]],
+];
+
+function drawCracks(ctx: CanvasRenderingContext2D, count: number, ink: string): void {
+  for (const crack of BRICK_CRACKS.slice(0, count)) {
+    for (const [color, width, offset] of [['rgba(255,255,255,0.7)', 3, 3], [ink, 5, 0]] as const) {
+      ctx.strokeStyle = color;
+      ctx.lineWidth = width;
+      ctx.lineJoin = 'round';
+      for (const line of crack) {
+        ctx.beginPath();
+        line.forEach(([x, y]) => ctx.lineTo(x + offset, y));
+        ctx.stroke();
+      }
+    }
+  }
+}
+
+function drawToughFace(ctx: CanvasRenderingContext2D, kind: 'silver' | 'gold', hitsLeft: number): void {
+  const style = TOUGH_STYLE[kind];
+  const [top, left, right, bottom] = style.bevel;
+  bevelFace(ctx, top, left, right, bottom);
+  clipPanel(ctx);
+  const g = ctx.createLinearGradient(0, BEVEL, 0, FACE_H - BEVEL);
+  g.addColorStop(0, style.panel[0]);
+  g.addColorStop(1, style.panel[1]);
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, FACE_W, FACE_H);
+  if (kind === 'silver') {
+    // Brushed-metal grain and corner bolts.
+    const rand = seededRandom(11);
+    for (let y = BEVEL; y < FACE_H - BEVEL; y += 2) {
+      ctx.fillStyle = `rgba(${rand() < 0.5 ? '255,255,255' : '40,50,70'},${0.05 + rand() * 0.1})`;
+      ctx.fillRect(0, y, FACE_W, 1);
+    }
+    for (const [x, y] of [[34, 34], [222, 34], [34, 94], [222, 94]]) {
+      ctx.fillStyle = '#5c687c';
+      ctx.beginPath();
+      ctx.arc(x, y, 9, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#e7ecf4';
+      ctx.beginPath();
+      ctx.arc(x - 1.5, y - 1.5, 6, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  } else {
+    // Four-point sparkles.
+    ctx.fillStyle = '#fffbe0';
+    for (const [x, y, r] of [[48, 42, 18], [214, 86, 16], [70, 92, 9], [190, 38, 9]]) {
+      ctx.beginPath();
+      ctx.moveTo(x, y - r);
+      ctx.quadraticCurveTo(x, y, x + r, y);
+      ctx.quadraticCurveTo(x, y, x, y + r);
+      ctx.quadraticCurveTo(x, y, x - r, y);
+      ctx.quadraticCurveTo(x, y, x, y - r);
+      ctx.fill();
+    }
+  }
+  glint(ctx, 18, 30, 0.3);
+  ctx.restore();
+  drawCracks(ctx, BRICK_HP[kind] - hitsLeft, style.ink);
+  // The hits-left number on a dark plate, so it reads from across the court.
+  ctx.fillStyle = style.plate;
+  ctx.beginPath();
+  ctx.roundRect(FACE_W / 2 - 40, FACE_H / 2 - 42, 80, 84, 14);
+  ctx.fill();
+  ctx.fillStyle = style.digit;
+  ctx.font = '88px "Bebas Neue"';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(String(hitsLeft), FACE_W / 2, FACE_H / 2 + 7);
+}
+
+function drawTntFace(ctx: CanvasRenderingContext2D): void {
+  ctx.clearRect(0, 0, FACE_W, FACE_H);
+  ctx.beginPath();
+  ctx.roundRect(0, 0, FACE_W, FACE_H, 16);
+  ctx.clip();
+  ctx.fillStyle = '#1a0a0c';
+  ctx.fillRect(0, 0, FACE_W, FACE_H);
+  // A bundle of dynamite sticks, each shaded like a cylinder.
+  const stick = FACE_W / 5;
+  for (let i = 0; i < 5; i++) {
+    const x = i * stick;
+    const g = ctx.createLinearGradient(x, 0, x + stick, 0);
+    g.addColorStop(0, '#7a0d14');
+    g.addColorStop(0.4, '#ff4a3d');
+    g.addColorStop(1, '#6a0a12');
+    ctx.fillStyle = g;
+    ctx.fillRect(x + 2, 0, stick - 4, FACE_H);
+  }
+  // Yellow strap with the label.
+  ctx.fillStyle = '#16090c';
+  ctx.fillRect(0, 28, FACE_W, 72);
+  const strap = ctx.createLinearGradient(0, 34, 0, 94);
+  strap.addColorStop(0, '#ffe066');
+  strap.addColorStop(1, '#f2a900');
+  ctx.fillStyle = strap;
+  ctx.fillRect(0, 34, FACE_W, 60);
+  ctx.fillStyle = '#16090c';
+  ctx.font = '72px "Bebas Neue"';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('TNT', FACE_W / 2, 69);
+}
+
+/** Face textures, cached by look (they never change). */
+const brickFaces = new Map<string, THREE.CanvasTexture>();
+
+function cachedFace(key: string, draw: (ctx: CanvasRenderingContext2D) => void): THREE.CanvasTexture {
+  let texture = brickFaces.get(key);
+  if (texture) return texture;
+  texture = canvasTexture(FACE_W, FACE_H, draw);
   texture.userData.shared = true;
-  toughFaces.set(key, texture);
+  brickFaces.set(key, texture);
   return texture;
 }
 
-/**
- * A brick. Silver and gold bricks show how many hits they have left on the
- * front; call setBrickHits after damage to update it.
- */
+function brickFace(kind: BrickKind, row: number, hitsLeft: number): THREE.CanvasTexture {
+  if (kind === 'silver' || kind === 'gold') return cachedFace(`${kind}-${hitsLeft}`, (ctx) => drawToughFace(ctx, kind, hitsLeft));
+  if (kind === 'bomb') return cachedFace('bomb', drawTntFace);
+  const motif = row % BRICK_ROW_COLORS.length;
+  return cachedFace(`normal-${motif}`, (ctx) => drawNormalFace(ctx, motif));
+}
+
+/** A brick face as an image URL, for the how-to-play pictures. */
+export function brickPicture(kind: BrickKind, row = 3): string {
+  return (brickFace(kind, row, BRICK_HP[kind]).image as HTMLCanvasElement).toDataURL();
+}
+
 const BRICK_DEPTH = 0.22;
 const BRICK_RADIUS = 0.045;
 
@@ -223,54 +436,17 @@ function brickGeometry(width: number, height: number): THREE.BufferGeometry {
   return g;
 }
 
-let tntTexture: THREE.Texture | null = null;
-function tntFace(): THREE.Texture {
-  if (tntTexture) return tntTexture;
-  tntTexture = canvasTexture(256, 128, (ctx) => {
-    ctx.clearRect(0, 0, 256, 128);
-    // Hazard stripes along the edges, label in the middle.
-    ctx.save();
-    ctx.beginPath();
-    ctx.roundRect(0, 0, 256, 128, 18);
-    ctx.clip();
-    for (let x = -128; x < 256; x += 32) {
-      ctx.fillStyle = '#ffcc00';
-      ctx.beginPath();
-      ctx.moveTo(x, 0);
-      ctx.lineTo(x + 16, 0);
-      ctx.lineTo(x + 16 + 128, 128);
-      ctx.lineTo(x + 128, 128);
-      ctx.fill();
-    }
-    ctx.fillStyle = '#1a1016';
-    ctx.fillRect(14, 22, 228, 84);
-    ctx.restore();
-    ctx.shadowColor = '#ff3b3b';
-    ctx.shadowBlur = 16;
-    ctx.fillStyle = '#ff4d4d';
-    ctx.font = '80px "Bebas Neue"';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText('TNT', 128, 70);
-  });
-  tntTexture.userData.shared = true;
-  return tntTexture;
-}
-
 /**
- * A rounded, glossy brick. Silver/gold bricks and TNT carry a printed plate
- * on the front (userData.front); setBrickHits updates the silver/gold number.
+ * A rounded, glossy brick with a printed front (userData.front). Silver and
+ * gold show how many hits they have left; call setBrickHits after damage.
  */
 export function createBrick(width: number, height: number, kind: BrickKind, row: number): THREE.Mesh {
   let body: THREE.MeshStandardMaterial;
-  let face: THREE.Texture | null = null;
   if (kind === 'silver' || kind === 'gold') {
     // Low metalness: there is no environment map, so high metalness renders near-black.
-    body = new THREE.MeshStandardMaterial({ color: TOUGH_STYLE[kind].shell, metalness: 0.4, roughness: 0.25 });
-    face = toughFace(kind, BRICK_HP[kind], BRICK_HP[kind]);
+    body = new THREE.MeshStandardMaterial({ color: TOUGH_STYLE[kind].shell, metalness: 0.4, roughness: 0.25, emissive: TOUGH_STYLE[kind].shell, emissiveIntensity: 0.25 });
   } else if (kind === 'bomb') {
     body = new THREE.MeshStandardMaterial({ color: 0x2a0f12, emissive: RED_HEX, emissiveIntensity: 0.25, roughness: 0.4 });
-    face = tntFace();
   } else {
     const color = brickColor(row);
     // Candy-like: glossy, with a little self-glow so colors pop on dark scenes.
@@ -279,15 +455,15 @@ export function createBrick(width: number, height: number, kind: BrickKind, row:
   const brick = new THREE.Mesh(brickGeometry(width, height), body);
   brick.castShadow = true;
   brick.receiveShadow = true;
-  if (face) {
-    const plate = new THREE.Mesh(
-      new THREE.PlaneGeometry(width - 0.08, height - 0.08),
-      new THREE.MeshStandardMaterial({ map: face, transparent: true, roughness: 0.35, emissive: 0xffffff, emissiveMap: face, emissiveIntensity: 0.2 }),
-    );
-    plate.position.z = BRICK_DEPTH / 2 + 0.003;
-    brick.add(plate);
-    brick.userData.front = plate;
-  }
+  const face = brickFace(kind, row, BRICK_HP[kind]);
+  const plate = new THREE.Mesh(
+    new THREE.PlaneGeometry(width - 0.05, height - 0.05),
+    // Mostly self-lit, so the scene's pink light doesn't tint silver and gold.
+    new THREE.MeshStandardMaterial({ map: face, transparent: true, roughness: 0.35, emissive: 0xffffff, emissiveMap: face, emissiveIntensity: 0.55 }),
+  );
+  plate.position.z = BRICK_DEPTH / 2 + 0.003;
+  brick.add(plate);
+  brick.userData.front = plate;
   return brick;
 }
 
@@ -295,7 +471,75 @@ export function createBrick(width: number, height: number, kind: BrickKind, row:
 export function setBrickHits(brick: THREE.Mesh, kind: BrickKind, hitsLeft: number): void {
   if (kind !== 'silver' && kind !== 'gold') return;
   const material = (brick.userData.front as THREE.Mesh).material as THREE.MeshStandardMaterial;
-  material.map = toughFace(kind, hitsLeft, BRICK_HP[kind]);
+  material.map = brickFace(kind, 0, hitsLeft);
   material.emissiveMap = material.map;
   material.needsUpdate = true;
+}
+
+/**
+ * The dark neon backboard the bricks plug into, standing on the floor. Each
+ * brick has a lit socket, which shows once the brick is knocked out.
+ */
+export function createBrickBoard(bricks: readonly { x: number; y: number }[], brickWidth: number, brickHeight: number, wallZ: number): THREE.Group {
+  const margin = 0.14;
+  const halfWidth = Math.max(...bricks.map((b) => Math.abs(b.x))) + brickWidth / 2 + margin;
+  const height = Math.max(...bricks.map((b) => b.y)) + brickHeight / 2 + margin;
+  const px = 200; // texture pixels per meter
+  const face = canvasTexture(Math.round(halfWidth * 2 * px), Math.round(height * px), (ctx) => {
+    const { width: w, height: h } = ctx.canvas;
+    const g = ctx.createLinearGradient(0, 0, 0, h);
+    g.addColorStop(0, '#1c0c44');
+    g.addColorStop(1, '#0a0420');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, w, h);
+    ctx.strokeStyle = 'rgba(255,47,214,0.16)';
+    ctx.lineWidth = 2;
+    for (let x = w / 2 % 30; x < w; x += 30) {
+      ctx.beginPath();
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, h);
+      ctx.stroke();
+    }
+    for (let y = h % 30; y < h; y += 30) {
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(w, y);
+      ctx.stroke();
+    }
+    ctx.shadowColor = '#3ff5ff';
+    ctx.shadowBlur = 12;
+    ctx.strokeStyle = 'rgba(63,245,255,0.75)';
+    ctx.lineWidth = 3;
+    ctx.fillStyle = '#05020f';
+    for (const b of bricks) {
+      const x = (b.x + halfWidth - brickWidth / 2) * px;
+      const y = h - (b.y + brickHeight / 2) * px;
+      ctx.beginPath();
+      ctx.roundRect(x, y, brickWidth * px, brickHeight * px, 8);
+      ctx.fill();
+      ctx.stroke();
+    }
+  });
+  const edge = new THREE.MeshStandardMaterial({ color: 0x140a2e, roughness: 0.5 });
+  const board = new THREE.Mesh(
+    new THREE.BoxGeometry(halfWidth * 2, height, 0.06),
+    [edge, edge, edge, edge, new THREE.MeshBasicMaterial({ map: face }), edge],
+  );
+  board.position.set(0, height / 2, wallZ - BRICK_DEPTH - 0.035);
+  board.castShadow = true;
+
+  // Neon tubes up the sides and across the top.
+  const g = new THREE.Group();
+  g.add(board);
+  const tube = new THREE.MeshBasicMaterial({ color: 0xff2fd6, toneMapped: false });
+  const thickness = 0.04;
+  for (const side of [-1, 1]) {
+    const post = new THREE.Mesh(new THREE.BoxGeometry(thickness, height + thickness, thickness), tube);
+    post.position.set(side * halfWidth, (height + thickness) / 2, board.position.z + 0.03);
+    g.add(post);
+  }
+  const bar = new THREE.Mesh(new THREE.BoxGeometry(halfWidth * 2, thickness, thickness), tube);
+  bar.position.set(0, height + thickness / 2, board.position.z + 0.03);
+  g.add(bar);
+  return g;
 }

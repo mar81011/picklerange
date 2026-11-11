@@ -1,5 +1,5 @@
 // Local lane server: the high-score database (SQLite file in data/), phone
-// name entry, and the staff page. Phones and the staff page reach it directly
+// name entry, score cards, and the staff page. Phones and the staff page reach it directly
 // on the venue network; the game reaches it through the Vite dev proxy at /api.
 // Run with: node server/index.ts
 import { randomInt, timingSafeEqual } from 'node:crypto';
@@ -8,8 +8,9 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'node:ht
 import { networkInterfaces } from 'node:os';
 import { join, resolve } from 'node:path';
 import QRCode from 'qrcode';
+import { CardStore } from './cards.ts';
 import { ClaimStore } from './claims.ts';
-import { expiredPage, namePage, successPage } from './phonePage.ts';
+import { cardExpiredPage, cardPage, expiredPage, namePage, successPage } from './phonePage.ts';
 import { GAME_ID, ScoreDb } from './scores.ts';
 import { staffPage } from './staffPage.ts';
 
@@ -34,7 +35,10 @@ function lanAddress(): string {
 
 const HOST = lanAddress();
 const claims = new ClaimStore();
+const cards = new CardStore();
 const scores = new ScoreDb(DB_FILE);
+/** The score card's font, served to phones (they have no internet on the venue Wi-Fi). */
+const CARD_FONT = new URL('../node_modules/@fontsource/bebas-neue/files/bebas-neue-latin-400-normal.woff2', import.meta.url);
 
 /**
  * Staff PIN: PICKLERANGE_STAFF_PIN if set, otherwise a random 6-digit PIN
@@ -56,8 +60,8 @@ function isStaff(req: IncomingMessage): boolean {
   return given.length === expected.length && timingSafeEqual(given, expected);
 }
 
-function backupNow(): string {
-  const file = scores.backup(BACKUP_DIR, new Date());
+function backupNow(label = ''): string {
+  const file = scores.backup(BACKUP_DIR, new Date(), 14, label);
   console.log(`Backup saved: ${file}`);
   return file;
 }
@@ -76,6 +80,11 @@ function send(res: ServerResponse, status: number, body: string, type: string): 
 const json = (res: ServerResponse, status: number, body: unknown) => send(res, status, JSON.stringify(body), 'application/json');
 const html = (res: ServerResponse, status: number, body: string) => send(res, status, body, 'text/html; charset=utf-8');
 
+/** A link plus its QR code as a data URL, for the game to show on the wall. */
+async function qrLink(url: string): Promise<{ url: string; qr: string }> {
+  return { url, qr: await QRCode.toDataURL(url, { margin: 1, width: 512, errorCorrectionLevel: 'M' }) };
+}
+
 async function readBody(req: IncomingMessage): Promise<string> {
   let size = 0;
   const chunks: Buffer[] = [];
@@ -88,7 +97,7 @@ async function readBody(req: IncomingMessage): Promise<string> {
 }
 
 async function createClaim(req: IncomingMessage, res: ServerResponse): Promise<void> {
-  let body: { gameId?: unknown; score?: unknown };
+  let body: { gameId?: unknown; score?: unknown; cardCode?: unknown };
   try {
     body = JSON.parse(await readBody(req));
   } catch {
@@ -99,10 +108,34 @@ async function createClaim(req: IncomingMessage, res: ServerResponse): Promise<v
     return json(res, 400, { error: 'invalid_claim' });
   }
 
-  const claim = claims.create(gameId, score as number, Date.now());
-  const url = `http://${HOST}:${PORT}/n/${claim.code}`;
-  const qr = await QRCode.toDataURL(url, { margin: 1, width: 512, errorCorrectionLevel: 'M' });
-  json(res, 201, { code: claim.code, url, qr });
+  const now = Date.now();
+  const card = typeof body.cardCode === 'string' ? cards.get(body.cardCode, now) : undefined;
+  const claim = claims.create(gameId, score as number, now, card?.code ?? null);
+  json(res, 201, { code: claim.code, ...(await qrLink(`http://${HOST}:${PORT}/n/${claim.code}`)) });
+}
+
+async function createCard(req: IncomingMessage, res: ServerResponse): Promise<void> {
+  let body: { gameId?: unknown; score?: unknown; level?: unknown; stats?: unknown; highScore?: unknown };
+  try {
+    body = JSON.parse(await readBody(req));
+  } catch {
+    return json(res, 400, { error: 'invalid_json' });
+  }
+  const { gameId, score, level } = body;
+  if (typeof gameId !== 'string' || !GAME_ID.test(gameId) || !Number.isInteger(score) || (score as number) < 0) {
+    return json(res, 400, { error: 'invalid_card' });
+  }
+  const card = cards.create(
+    {
+      gameId,
+      score: score as number,
+      level: Number.isInteger(level) ? (level as number) : null,
+      stats: typeof body.stats === 'string' ? body.stats : '',
+      highScore: body.highScore === true,
+    },
+    Date.now(),
+  );
+  json(res, 201, { code: card.code, ...(await qrLink(`http://${HOST}:${PORT}/c/${card.code}`)) });
 }
 
 async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
@@ -151,7 +184,39 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
       return scores.delete(Number(parts[3])) ? (res.writeHead(204).end(), undefined) : json(res, 404, { error: 'not_found' });
     }
     if (parts[2] === 'backup' && req.method === 'POST') return json(res, 200, { file: backupNow() });
+    if (parts[2] === 'reset' && req.method === 'POST') {
+      // Empties the leaderboards (all games, or one), e.g. for a new venue. A backup is made first.
+      let body: { gameId?: unknown };
+      try {
+        body = JSON.parse((await readBody(req)) || '{}');
+      } catch {
+        return json(res, 400, { error: 'invalid_json' });
+      }
+      const gameId = typeof body.gameId === 'string' && GAME_ID.test(body.gameId) ? body.gameId : undefined;
+      const backup = backupNow('before-reset');
+      const deleted = scores.deleteAll(gameId);
+      console.log(`Staff reset: deleted ${deleted} scores (${gameId ?? 'all games'})`);
+      return json(res, 200, { deleted, backup });
+    }
     return json(res, 404, { error: 'not_found' });
+  }
+
+  // Address of the staff page, for the QR the game shows when staff press S on the menu.
+  if (parts[0] === 'api' && parts[1] === 'staff-link' && parts.length === 2 && req.method === 'GET') {
+    return json(res, 200, await qrLink(`http://${HOST}:${PORT}/staff`));
+  }
+
+  // Score cards
+  if (parts[0] === 'api' && parts[1] === 'cards' && parts.length === 2 && req.method === 'POST') return createCard(req, res);
+  if (parts[0] === 'c' && parts.length === 2 && req.method === 'GET') {
+    const card = cards.get(parts[1], now);
+    return card ? html(res, 200, cardPage(card)) : html(res, 410, cardExpiredPage());
+  }
+  if (parts[0] === 'fonts' && parts[1] === 'bebas-neue.woff2' && req.method === 'GET') {
+    if (!existsSync(CARD_FONT)) return send(res, 404, 'Not found', 'text/plain');
+    res.writeHead(200, { 'content-type': 'font/woff2', 'cache-control': 'public, max-age=86400' });
+    res.end(readFileSync(CARD_FONT));
+    return;
   }
 
   // Name claims
@@ -178,7 +243,7 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
     if (!claim || claims.isExpired(claim, now)) return html(res, 410, expiredPage());
 
     if (req.method === 'GET') {
-      if (claim.name) return html(res, 200, successPage(claim.name));
+      if (claim.name) return html(res, 200, successPage(claim.name, claim.cardCode));
       return html(res, 200, namePage(claim.code, claim.gameId, claim.score));
     }
     if (req.method === 'POST') {
@@ -189,8 +254,11 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
         return html(res, 413, namePage(claim.code, claim.gameId, claim.score, 'That name is too long.'));
       }
       const result = claims.submit(claim.code, name, now);
-      if (result.ok) return html(res, 200, successPage(result.claim.name!));
-      if (result.error === 'already_named') return html(res, 200, successPage(claim.name!));
+      if (result.ok) {
+        if (claim.cardCode) cards.setName(claim.cardCode, result.claim.name!);
+        return html(res, 200, successPage(result.claim.name!, claim.cardCode));
+      }
+      if (result.error === 'already_named') return html(res, 200, successPage(claim.name!, claim.cardCode));
       if (result.error === 'invalid_name') {
         return html(res, 400, namePage(claim.code, claim.gameId, claim.score, 'Use letters and numbers only.'));
       }

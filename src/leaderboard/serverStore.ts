@@ -2,6 +2,8 @@
 // in browser storage so the game keeps working when the server can't be
 // reached (lane PC offline, or the online demo on Vercel, which has no
 // server). Scores made while offline are queued and sent on the next refresh.
+// Whenever the server can be reached it is the only source of truth, so scores
+// staff deleted (or old ones that only ever lived in this browser) disappear.
 import type { LeaderboardEntry, LeaderboardStore } from './leaderboard';
 
 export interface PendingScore {
@@ -27,6 +29,8 @@ export class ServerStore implements LeaderboardStore {
     private readonly storage: Pick<Storage, 'getItem' | 'setItem'> | null,
     private readonly fetcher: Fetch = (input, init) => fetch(input, init),
     private readonly base = '/api',
+    /** Every game with a leaderboard, so stale browser copies of all of them are cleared. */
+    private readonly knownGames: readonly string[] = [],
   ) {
     try {
       const raw = storage?.getItem(PENDING_KEY);
@@ -41,7 +45,9 @@ export class ServerStore implements LeaderboardStore {
   online = false;
 
   load(gameId: string): LeaderboardEntry[] {
-    return [...(this.cache.get(gameId) ?? this.local.load(gameId))];
+    // The browser copy is only a fallback for when the server can't be reached.
+    const fallback = this.online ? [] : this.local.load(gameId);
+    return [...(this.cache.get(gameId) ?? fallback)];
   }
 
   save(gameId: string, entries: LeaderboardEntry[]): void {
@@ -65,7 +71,7 @@ export class ServerStore implements LeaderboardStore {
         if (!res.ok) throw new Error(String(res.status));
         const tables = (await res.json()) as Record<string, { name: string; score: number; at: number; level: number | null }[]>;
         this.online = true;
-        const games = new Set([...this.cache.keys(), ...Object.keys(tables)]);
+        const games = new Set([...this.knownGames, ...this.cache.keys(), ...Object.keys(tables), ...this.pending.map((p) => p.gameId)]);
         for (const gameId of games) {
           const rows = (tables[gameId] ?? []).map((r) => {
             const entry: LeaderboardEntry = { name: r.name, score: r.score, at: r.at };

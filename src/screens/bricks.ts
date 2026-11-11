@@ -2,7 +2,7 @@ import { music } from '../audio/music';
 import * as THREE from 'three';
 import type { App } from '../app';
 import { ballFlight, burst, floatText, shockwave } from '../engine/effects';
-import { brickColor, createBrick, setBrickHits } from '../engine/props';
+import { brickColor, createBrick, createBrickBoard, setBrickHits } from '../engine/props';
 import { disposeObject, linear, type Scope } from '../engine/scope';
 import { DEFAULT_BRICKS, applyHit, createWall, isOver, wallOffsetAt, type Brick, type BrickOptions } from '../games/bricks/brickLogic';
 import { BRICK_LEVELS } from '../games/bricks/levels';
@@ -21,6 +21,7 @@ function playLevel(app: App, ctx: LevelContext): Promise<LevelOutcome> {
 
   // All bricks live in one group so the whole wall can sway together.
   const wall = scope.add(new THREE.Group());
+  wall.add(createBrickBoard(state.bricks, opts.brickWidth, opts.brickHeight, opts.wallZ));
   const meshes = new Map<number, THREE.Mesh>();
   state.bricks.forEach((b, i) => {
     const mesh = createBrick(opts.brickWidth, opts.brickHeight, b.kind, b.row);
@@ -38,9 +39,10 @@ function playLevel(app: App, ctx: LevelContext): Promise<LevelOutcome> {
     const glow = 0.25 + 0.25 * Math.sin(now / 180);
     for (const b of state.bricks) {
       if (b.kind !== 'bomb') continue;
-      const material = meshes.get(b.id)?.material;
-      const list = (Array.isArray(material) ? material : material ? [material] : []) as THREE.MeshStandardMaterial[];
-      for (const m of list) m.emissiveIntensity = glow;
+      const mesh = meshes.get(b.id);
+      if (!mesh) continue;
+      (mesh.material as THREE.MeshStandardMaterial).emissiveIntensity = glow;
+      ((mesh.userData.front as THREE.Mesh).material as THREE.MeshStandardMaterial).emissiveIntensity = 0.45 + glow;
     }
   });
 

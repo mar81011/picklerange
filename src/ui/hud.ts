@@ -1,5 +1,12 @@
 // HTML overlay widgets shared by the game screens.
+import { music } from '../audio/music';
 import type { Scope } from '../engine/scope';
+import type { GameId } from '../games';
+import { howToPlayRow } from './howToPlay';
+
+/** How long the intro card stays up before the countdown; longer when it has pictures to look at. */
+const READ_MS = 1600;
+const READ_WITH_PICTURES_MS = 4500;
 
 export interface HudColumn {
   label: string;
@@ -52,17 +59,28 @@ export async function banner(scope: Scope, text: string, cls = '', top = 330, si
 /**
  * Title card with how-to-play text and a 3-2-1 countdown. Resolves on GO so
  * the game can start accepting hits. Party games pass showGo = false, because
- * their "PLAYER 1 — YOUR TURN" banner takes GO!'s place.
+ * their "PLAYER 1 — YOUR TURN" banner takes GO!'s place. pictures adds the
+ * game's how-to-play drawings (first level only, so repeat players aren't slowed down).
  */
-export async function introCard(scope: Scope, title: string, howTo: string, footer?: string, kicker?: string, showGo = true): Promise<void> {
-  const card = scope.el('div', 'panel intro-card');
+export async function introCard(
+  scope: Scope,
+  title: string,
+  howTo: string,
+  footer?: string,
+  kicker?: string,
+  showGo = true,
+  pictures: GameId | null = null,
+): Promise<void> {
+  const card = scope.el('div', `panel intro-card${pictures ? ' with-pictures' : ''}`);
   if (kicker) scope.el('div', 'label neon kicker', card, kicker);
   scope.el('div', 'title display', card, title);
   scope.el('div', 'howto', card, howTo);
+  if (pictures) howToPlayRow(scope, card, pictures);
   if (footer) scope.el('div', 'goal display neon', card, footer);
   const count = scope.el('div', 'count display neon', card, '');
-  await scope.wait(1600);
+  await scope.wait(pictures ? READ_WITH_PICTURES_MS : READ_MS);
   for (const n of ['3', '2', '1']) {
+    music.sfx('count');
     count.textContent = n;
     count.classList.remove('bump');
     void count.offsetWidth;
@@ -70,5 +88,6 @@ export async function introCard(scope: Scope, title: string, howTo: string, foot
     await scope.wait(650);
   }
   card.remove();
+  music.sfx('go');
   if (showGo) void banner(scope, 'GO!', 'neon', 380, 180, 300);
 }

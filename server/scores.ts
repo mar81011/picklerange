@@ -76,6 +76,14 @@ export class ScoreDb {
     return this.#db.prepare('DELETE FROM scores WHERE id = ?').run(id).changes > 0;
   }
 
+  /** Deletes every score, or only one game's. Returns how many were deleted. */
+  deleteAll(gameId?: string): number {
+    const result = gameId
+      ? this.#db.prepare('DELETE FROM scores WHERE game_id = ?').run(gameId)
+      : this.#db.prepare('DELETE FROM scores').run();
+    return Number(result.changes);
+  }
+
   count(): number {
     return Number((this.#db.prepare('SELECT COUNT(*) AS n FROM scores').get() as { n: number }).n);
   }
@@ -83,11 +91,12 @@ export class ScoreDb {
   /**
    * Writes a consistent copy of the database to dir (safe while the game is
    * running) and keeps only the newest `keep` backups. Returns the file path.
+   * label goes into the file name, e.g. "before-reset".
    */
-  backup(dir: string, now: Date, keep = 14): string {
+  backup(dir: string, now: Date, keep = 14, label = ''): string {
     mkdirSync(dir, { recursive: true });
     const stamp = now.toISOString().replace(/[:.]/g, '-');
-    const file = join(dir, `picklerange-${stamp}.db`);
+    const file = join(dir, `picklerange-${stamp}${label ? `-${label}` : ''}.db`);
     this.#db.prepare('VACUUM INTO ?').run(file);
     const old = readdirSync(dir)
       .filter((f) => /^picklerange-.*\.db$/.test(f))

@@ -14,6 +14,16 @@ export interface Claim {
   score: number;
   expiresAt: number;
   name: string | null;
+  cardCode: string | null;
+}
+
+/** A random code that isTaken() doesn't already use. */
+export function newCode(random: () => number, isTaken: (code: string) => boolean): string {
+  let code: string;
+  do {
+    code = Array.from({ length: CODE_LENGTH }, () => CODE_ALPHABET[Math.floor(random() * CODE_ALPHABET.length)]).join('');
+  } while (isTaken(code));
+  return code;
 }
 
 export type SubmitResult =
@@ -36,14 +46,11 @@ export class ClaimStore {
     this.#random = options.random ?? Math.random;
   }
 
-  create(gameId: string, score: number, now: number): Claim {
+  /** cardCode links the claim to a score card, which gets the name too. */
+  create(gameId: string, score: number, now: number, cardCode: string | null = null): Claim {
     this.#prune(now);
-    let code: string;
-    do {
-      code = Array.from({ length: CODE_LENGTH }, () => CODE_ALPHABET[Math.floor(this.#random() * CODE_ALPHABET.length)]).join('');
-    } while (this.#claims.has(code));
-
-    const claim: Claim = { code, gameId, score, expiresAt: now + this.#ttlMs, name: null };
+    const code = newCode(this.#random, (c) => this.#claims.has(c));
+    const claim: Claim = { code, gameId, score, expiresAt: now + this.#ttlMs, name: null, cardCode };
     this.#claims.set(code, claim);
     return claim;
   }

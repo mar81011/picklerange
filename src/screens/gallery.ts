@@ -90,6 +90,7 @@ function playLevel(app: App, ctx: LevelContext): Promise<LevelOutcome> {
         await ballFlight(scope, at, 200);
         music.sfx('miss');
         burst(scope, at, 0xffffff, 0.1);
+        floatText(scope, at, 'MISS', 'muted', 64);
         return;
       }
       void dropPlate(result.plate.id, true);

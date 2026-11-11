@@ -1,7 +1,8 @@
 // A tiny Web Audio synth and step sequencer that plays the themes in
-// themes.ts. Browsers only allow sound after the first click or key press, so
-// the music starts on the first interaction. (Kiosk PCs can skip that with
-// Chrome/Edge's --autoplay-policy=no-user-gesture-required.)
+// themes.ts. Browsers only allow sound after the first click, tap or key
+// press, so the audio starts suspended and is switched on by the first
+// interaction. (Kiosk PCs can skip that with Chrome/Edge's
+// --autoplay-policy=no-user-gesture-required, and then sound starts right away.)
 import { THEMES, type Theme, type ThemeId, type Wave } from './themes';
 
 const LOOKAHEAD_S = 0.12;
@@ -42,9 +43,19 @@ class Music {
     } catch {
       // Storage blocked: default to sound on.
     }
+    // Which events count as a "user gesture" differs between mouse, touch and
+    // browsers, so try on all of them. Capture phase, so nothing can swallow them.
     const unlock = () => this.ensureContext();
-    window.addEventListener('pointerdown', unlock);
-    window.addEventListener('keydown', unlock);
+    for (const type of ['pointerdown', 'pointerup', 'click', 'touchend', 'keydown']) {
+      window.addEventListener(type, unlock, { capture: true });
+    }
+    // Start now if the browser allows it (kiosk mode); otherwise it waits for a gesture.
+    this.ensureContext();
+  }
+
+  /** "running" once sound can play; "suspended" while the browser is waiting for a click. */
+  get state(): AudioContextState | 'none' {
+    return this.ctx?.state ?? 'none';
   }
 
   get isMuted(): boolean {
@@ -209,7 +220,7 @@ class Music {
    * hit = bright two-note blip, big = rising fanfare (bullseye, bonus, combo),
    * miss = soft low "whomp", bad = buzzer (bomb, no-shoot, lost life).
    */
-  sfx(kind: 'hit' | 'big' | 'miss' | 'bad'): void {
+  sfx(kind: 'hit' | 'big' | 'miss' | 'bad' | 'count' | 'go'): void {
     this.ensureContext();
     const ctx = this.ctx;
     if (!ctx) return;
@@ -248,6 +259,17 @@ class Music {
       case 'bad':
         note('square', 140, t, 0.45, 0.28);
         note('sawtooth', 147, t, 0.45, 0.2);
+        break;
+      case 'count':
+        // 3, 2, 1: a short arcade beep.
+        note('square', 660, t, 0.16, 0.3);
+        note('triangle', 1320, t, 0.12, 0.2);
+        break;
+      case 'go':
+        // GO!: an octave higher, longer, with a chord and a whoosh.
+        for (const hz of [1047, 1319, 1568]) note('square', hz, t, 0.55, 0.16);
+        note('triangle', 2093, t, 0.6, 0.22);
+        this.noiseBurstTo(this.sfxGain, t, 0.35, 0.1, 'highpass', 4000);
         break;
     }
   }

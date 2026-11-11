@@ -9,6 +9,7 @@ import { createReachRing } from '../engine/props';
 import type { Scope } from '../engine/scope';
 import { CAMERA_POSITION } from '../engine/stage';
 import { NEON_HEX, RED_HEX } from '../engine/textures';
+import { OPPONENT_NAME } from '../games';
 import { OPEN_COURT_LEVELS } from '../games/opencourt/levels';
 import { applyHit, createOpenCourt, isRoundOver, type OpenCourtOptions, type Opponent as OpponentSpot } from '../games/opencourt/openCourtLogic';
 import { hudBar, setPips, setValue } from '../ui/hud';
@@ -36,6 +37,14 @@ function playLevel(app: App, ctx: LevelContext): Promise<LevelOutcome> {
     holder.add(o.root);
   });
   scope.onUpdate((dt) => opponent?.update(dt));
+
+  // Nameplate at the robot's feet (above his head it would hide behind the scoreboard).
+  const nameTag = scope.el('div', 'tag display opponent-tag', scope.layer, level.boss ? `BIG ${OPPONENT_NAME}` : OPPONENT_NAME);
+  scope.onUpdate(() => {
+    const p = app.stage.toOverlay({ x: holder.position.x, y: 0, z: holder.position.z + 0.35 });
+    nameTag.style.left = `${p.x}px`;
+    nameTag.style.top = `${p.y}px`;
+  });
 
   const reach = scope.add(createReachRing(opts.reach));
   const placeOpponent = (o: { x: number; z: number }) => {
@@ -94,7 +103,7 @@ function playLevel(app: App, ctx: LevelContext): Promise<LevelOutcome> {
         const at = result.landing ? { x: result.landing.x, y: 0.04, z: result.landing.z } : pointAlong(ray, 20);
         await ballFlight(scope, at, 450);
         music.sfx('miss');
-        floatText(scope, { x: at.x, y: Math.max(at.y, 0.6), z: at.z }, result.outReason === 'wide' ? 'OUT — WIDE' : 'OUT — LONG', 'muted', 76);
+        floatText(scope, { x: at.x, y: Math.max(at.y, 0.6), z: at.z }, result.outReason === 'wide' ? 'MISS — OUT WIDE' : 'MISS — OUT LONG', 'muted', 76);
       } else {
         const landing = { x: result.landing.x, y: 0.04, z: result.landing.z };
         await ballFlight(scope, landing, 450);

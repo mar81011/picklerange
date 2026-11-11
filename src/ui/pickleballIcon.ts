@@ -8,7 +8,7 @@ const HOLE_RADIUS = 0.15; // radians, same as the 3D ball
 const SIZE = 100;
 const R = 46;
 
-function holePoints(): [number, number, number][] {
+export function holePoints(): [number, number, number][] {
   const golden = Math.PI * (3 - Math.sqrt(5));
   // A slight tilt so the pattern doesn't line up with the icon's edges.
   const tilt = 0.5;
