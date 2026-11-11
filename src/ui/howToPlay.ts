@@ -9,6 +9,7 @@ import { DROP_SHOT_BONUS, WINNER_POINTS } from '../games/opencourt/openCourtLogi
 import { DEFAULT_POPUP, multiplierFor } from '../games/popup/popupLogic';
 import { POINTS_PER_RETURN, STREAK_BONUS } from '../games/rally/logic';
 import { POINTS as ZOMBIE_POINTS } from '../games/zombies/logic';
+import { PARTS as DRAGON_PARTS, POINTS as DRAGON_POINTS } from '../games/dragon/logic';
 import { memoryPicture } from '../engine/memoryCards';
 import { brickPicture } from '../engine/props';
 import type { Scope } from '../engine/scope';
@@ -68,6 +69,9 @@ const kitchen = svg(
 
 /** The real brick face from the game. */
 const brick = (kind: BrickKind) => () => svg(`<image href="${brickPicture(kind)}" x="2" y="26" width="96" height="48"/>`);
+
+/** An emoji drawn big in the picture box. */
+const emoji = (char: string, size = 64) => svg(`<text x="50" y="${50 + size * 0.36}" font-size="${size}" text-anchor="middle">${char}</text>`);
 
 /** The zombie emoji (same as the menu card), bigger for tougher zombies; the boss gets a crown. */
 const zombie = (size: number, crown = false) =>
@@ -141,6 +145,11 @@ const LEGENDS: Record<GameId, LegendItem[]> = {
     { art: brick('silver'), label: 'Silver • 2 hits', value: `+${BRICK_POINTS.silver}`, tone: 'good' },
     { art: brick('gold'), label: 'Gold • 3 hits', value: `+${BRICK_POINTS.gold}`, tone: 'good' },
     { art: brick('bomb'), label: 'TNT', value: 'Blasts neighbors', tone: 'good' },
+  ],
+  dragon: [
+    { art: emoji('🐲', 70), label: 'Head', value: `+${DRAGON_PARTS.head.points}`, tone: 'good' },
+    { art: emoji('🐉', 70), label: 'Other parts', value: `+${DRAGON_PARTS.body.points}–${DRAGON_PARTS.tail.points}`, tone: 'good' },
+    { art: emoji('💥', 64), label: 'Break a part off', value: `+${DRAGON_POINTS.break}`, tone: 'good' },
   ],
   zombies: [
     { art: zombie(56), label: 'Zombie', value: `+${ZOMBIE_POINTS.walker}`, tone: 'good' },

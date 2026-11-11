@@ -49,6 +49,7 @@ export type ThemeId =
   | 'opencourt'
   | 'bricks'
   | 'zombies'
+  | 'dragon'
   | 'gallery'
   | 'rally'
   | 'tictactoe'
@@ -92,6 +93,13 @@ export const THEMES: Record<ThemeId, Theme> = {
     pad: 'sawtooth', swing: 0, volume: 0.75, seed: 5,
   },
   // Spooky, sparse, minor drone.
+  // Epic boss battle: driving drums, low brass-like saws.
+  dragon: {
+    bpm: 128, root: 50, scale: HARMONIC_MINOR, progression: [0, 5, 3, 4],
+    kick: 'x..x..x.x..x..x.', snare: '....x.......x.x.', hat: 'x.x.x.x.x.x.x.x.',
+    bass: 'x.xx.xx.x.xx.xo.', bassWave: 'sawtooth', lead: 'melody', leadWave: 'sawtooth', leadEvery: 2, leadOctave: 12,
+    pad: 'sawtooth', swing: 0, volume: 0.75, seed: 12,
+  },
   zombies: {
     bpm: 84, root: 45, scale: HARMONIC_MINOR, progression: [0, 0, 5, 4],
     kick: 'x.........x.....', snare: '............x...', hat: '',

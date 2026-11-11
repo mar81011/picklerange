@@ -7,6 +7,7 @@ import { Stage } from './engine/stage';
 import { loadModel } from './engine/character';
 import { preloadOpponent } from './engine/opponent';
 import { ZOMBIE_MODEL } from './screens/zombies';
+import { DRAGON_MODEL } from './screens/dragon';
 import { attachPointerSimulator } from './input/hitEvents';
 import { music } from './audio/music';
 import { scoreStore } from './services';
@@ -41,6 +42,7 @@ function start(): void {
   });
   void preloadOpponent().catch((err) => console.error('Opponent model failed to load', err));
   void loadModel(ZOMBIE_MODEL).catch((err) => console.error('Zombie model failed to load', err));
+  void loadModel(DRAGON_MODEL).catch((err) => console.error('Dragon model failed to load', err));
   app.menu();
   // The mute setting is remembered, so say so; otherwise silence looks like a bug.
   if (music.isMuted) toast(stage.frame, 'MUSIC OFF • PRESS M', 6000);

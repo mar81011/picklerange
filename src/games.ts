@@ -9,6 +9,7 @@ export type GameId =
   | 'opencourt'
   | 'bricks'
   | 'zombies'
+  | 'dragon'
   | 'gallery'
   | 'rally'
   | 'tictactoe'
@@ -82,6 +83,14 @@ export const GAMES: readonly GameInfo[] = [
     tagline: '5 levels • feeder pace',
     howTo: 'Each ball, a zone lights up on the court. Land your shot in it!\nMiss the zone, or don’t hit in time, and you lose a life.',
     accent: '#06d6a0',
+    mode: 'solo',
+  },
+  {
+    id: 'dragon',
+    title: 'DRAGON HUNT',
+    tagline: '5 levels • break its parts',
+    howTo: 'Hit the dragon! Every part scores differently — the head is worth the most.\nBreak off a wing, claw or tail for a bonus. Defeat it before your balls run out!',
+    accent: '#ff6a1a',
     mode: 'solo',
   },
   {

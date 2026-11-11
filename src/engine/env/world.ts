@@ -12,6 +12,7 @@ import { range } from './range';
 import { space } from './space';
 import { stadium } from './stadium';
 import { synthwave } from './synthwave';
+import { volcanoEnv } from './volcano';
 import type { Environment } from './types';
 
 const COURT_CENTER = new THREE.Vector3(0, 0, -3.35);
@@ -27,9 +28,10 @@ export type EnvironmentId =
   | 'beach'
   | 'space'
   | 'pub'
-  | 'lodge';
+  | 'lodge'
+  | 'volcano';
 
-const BUILDERS: Record<EnvironmentId, () => Environment> = { stadium, park, neon, synthwave, graveyard, range, beach, space, pub, lodge };
+const BUILDERS: Record<EnvironmentId, () => Environment> = { stadium, park, neon, synthwave, graveyard, range, beach, space, pub, lodge, volcano: volcanoEnv };
 
 export class World {
   private built = new Map<EnvironmentId, Environment>();
