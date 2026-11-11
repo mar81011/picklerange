@@ -59,6 +59,26 @@ function crackedGround(): THREE.CanvasTexture {
   return texture;
 }
 
+/** White blob with ragged edges on black, used as a lava pool's outline (alphaMap). */
+function poolMask(seed: number, w: number, d: number): THREE.CanvasTexture {
+  return canvasTexture(256, Math.max(32, Math.round((256 * d) / w)), (ctx) => {
+    const { width, height } = ctx.canvas;
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, width, height);
+    const rand = seededRandom(seed);
+    ctx.fillStyle = '#fff';
+    ctx.filter = 'blur(3px)';
+    ctx.beginPath();
+    const steps = 48;
+    for (let i = 0; i < steps; i++) {
+      const a = (i / steps) * Math.PI * 2;
+      const r = 0.82 + rand() * 0.16;
+      ctx.lineTo(width / 2 + Math.cos(a) * (width / 2) * r, height / 2 + Math.sin(a) * (height / 2) * r);
+    }
+    ctx.fill();
+  });
+}
+
 function volcano(root: THREE.Group): THREE.MeshBasicMaterial {
   const rock = new THREE.MeshLambertMaterial({ color: 0x1c1416, flatShading: true });
   const cone = new THREE.Mesh(new THREE.CylinderGeometry(4, 15, 13, 12, 3, true), rock);
@@ -106,24 +126,32 @@ function rocks(root: THREE.Group): void {
 
 export function volcanoEnv(): Environment {
   const root = new THREE.Group();
-  root.add(new THREE.HemisphereLight(0xffb27a, 0x2a0a0a, 1.3));
+  root.add(new THREE.HemisphereLight(0xb8c4e0, 0x3a1208, 1.0));
+  // Cool light from behind the court outlines the dragon against the dark floor.
+  const rim = new THREE.DirectionalLight(0x7fb8ff, 3.2);
+  rim.position.set(2, 6, -14);
+  rim.target.position.set(0, 1, -3);
+  root.add(rim, rim.target);
   const lavaLight = new THREE.PointLight(0xff5a1a, 30, 22, 1.6);
   lavaLight.position.set(0, 3, -9);
   root.add(lavaLight);
-  const key = shadowLight(0xffc9a0, 2.2, [-5, 12, 6]);
+  const key = shadowLight(0xffd8b8, 2.0, [-5, 12, 6]);
   root.add(key, key.target);
 
-  const ground = new THREE.Mesh(new THREE.PlaneGeometry(90, 70), new THREE.MeshLambertMaterial({ map: crackedGround(), emissive: 0xffffff, emissiveMap: crackedGround(), emissiveIntensity: 0.6 }));
+  const ground = new THREE.Mesh(new THREE.PlaneGeometry(90, 70), new THREE.MeshLambertMaterial({ map: crackedGround(), emissive: 0xffffff, emissiveMap: crackedGround(), emissiveIntensity: 0.9 }));
   ground.rotation.x = -Math.PI / 2;
   ground.position.z = -20;
   ground.receiveShadow = true;
   root.add(ground);
-  root.add(buildCourt({ surface: ['#3a2a2e', '#45323a'], line: '#ffd2a8', kitchen: 'rgba(255,120,40,0.1)', apron: 0x24181b, roughness: 0.9 }));
+  root.add(buildCourt({ surface: ['#1d2129', '#252a34'], line: '#ffb36b', kitchen: 'rgba(255,120,40,0.12)', apron: 0x15171c, roughness: 0.85 }));
 
   // Lava pools beside the court and a river behind it, close enough for the camera to see.
-  const lava = new THREE.MeshBasicMaterial({ map: lavaTexture(), toneMapped: false });
-  for (const [x, z, w, d] of [[-COURT.halfWidth - 2.6, -4.5, 2.6, 6], [COURT.halfWidth + 2.8, -6, 3, 5], [0, -9, 26, 1.6]]) {
-    const pool = new THREE.Mesh(new THREE.PlaneGeometry(w, d), lava);
+  // One flowing lava texture; each pool cuts its own ragged outline out of it.
+  const lavaMap = lavaTexture();
+  const pools: [number, number, number, number][] = [[-COURT.halfWidth - 2.6, -4.5, 2.6, 6], [COURT.halfWidth + 2.8, -6, 3, 5], [0, -9.2, 26, 2.2]];
+  for (const [i, [x, z, w, d]] of pools.entries()) {
+    const material = new THREE.MeshBasicMaterial({ map: lavaMap, alphaMap: poolMask(40 + i, w, d), transparent: true, depthWrite: false, toneMapped: false });
+    const pool = new THREE.Mesh(new THREE.PlaneGeometry(w, d), material);
     pool.rotation.x = -Math.PI / 2;
     pool.position.set(x, 0.02, z);
     root.add(pool);
@@ -155,7 +183,7 @@ export function volcanoEnv(): Environment {
       [0.88, '#ff8a3a'],
       [1, '#2a0a08'],
     ]),
-    fog: new THREE.Fog(0x2a0e0c, 16, 52),
+    fog: new THREE.Fog(0x140a0c, 16, 52),
     update: (dt, now) => {
       flash = Math.max(0, flash - dt * 2);
       const attr = geometry.getAttribute('position') as THREE.BufferAttribute;
@@ -165,7 +193,7 @@ export function volcanoEnv(): Environment {
         attr.setXYZ(i, attr.getX(i) + Math.sin(now / 900 + i) * dt * 0.2, y, attr.getZ(i));
       }
       attr.needsUpdate = true;
-      lava.map!.offset.set(Math.sin(now / 5000) * 0.05, now / 40000);
+      lavaMap.offset.set(Math.sin(now / 5000) * 0.05, now / 40000);
       const pulse = 0.5 + 0.5 * Math.sin(now / 700);
       lavaLight.intensity = 26 + pulse * 8 + flash * 40;
       crater.color.setHSL(0.06, 1, 0.5 + pulse * 0.08);

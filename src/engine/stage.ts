@@ -2,6 +2,10 @@
 // looking over the net (the bottom edge of the projection) at the far court.
 import * as THREE from 'three';
 import type { Ray, Vec3 } from '../core/geometry';
+import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
+import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
+import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { isTouchDevice } from '../ui/touch';
 
 export const DESIGN_WIDTH = 1920;
@@ -41,6 +45,9 @@ export class Stage {
 
   /** Off while a full-screen HTML screen (the menu) covers the 3D view, to save GPU/CPU. */
   render3d = true;
+  /** Glow pass, built the first time a screen asks for it (see setBloom). */
+  private composer: { composer: EffectComposer; bloom: UnrealBloomPass } | null = null;
+  private bloomOn = false;
   private updates = new Set<UpdateFn>();
   private raycaster = new THREE.Raycaster();
   private shakeUntil = 0;
@@ -114,6 +121,7 @@ export class Stage {
     this.frame.style.transformOrigin = 'top left';
     this.frame.style.transform = this.rotated ? `translateX(${vw}px) rotate(90deg)` : '';
     this.renderer.setSize(width, height);
+    this.composer?.composer.setSize(width, height);
 
     const aspect = width / height;
     this.camera.aspect = aspect;
@@ -152,7 +160,28 @@ export class Stage {
     } else {
       this.camera.position.copy(this.basePosition);
     }
-    if (this.render3d) this.renderer.render(this.scene, this.camera);
+    if (!this.render3d) return;
+    if (this.bloomOn && this.composer) this.composer.composer.render();
+    else this.renderer.render(this.scene, this.camera);
+  }
+
+  /**
+   * Soft glow around the brightest things (lava, fire). 0 turns it off.
+   * Phones skip it: it costs a few extra full-screen passes.
+   */
+  setBloom(strength: number): void {
+    this.bloomOn = strength > 0 && !isTouchDevice;
+    if (!this.bloomOn) return;
+    if (!this.composer) {
+      const composer = new EffectComposer(this.renderer);
+      composer.addPass(new RenderPass(this.scene, this.camera));
+      const bloom = new UnrealBloomPass(new THREE.Vector2(this.size.width, this.size.height), strength, 0.5, 0.82);
+      composer.addPass(bloom);
+      composer.addPass(new OutputPass());
+      composer.setSize(this.size.width, this.size.height);
+      this.composer = { composer, bloom };
+    }
+    this.composer.bloom.strength = strength;
   }
 
   /** Runs every frame until the returned function is called. */

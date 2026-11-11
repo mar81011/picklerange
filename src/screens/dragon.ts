@@ -4,7 +4,7 @@ import type { GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import type { App } from '../app';
 import type { Vec3 } from '../core/geometry';
 import { Character, loadModel } from '../engine/character';
-import { ballFlight, burst, floatText, shockwave } from '../engine/effects';
+import { ballFlight, burst, floatText, groundRipple, shockwave } from '../engine/effects';
 import { easeInCubic, linear, type Scope } from '../engine/scope';
 import { sparkTexture } from '../engine/textures';
 import { DRAGON_LEVELS } from '../games/dragon/levels';
@@ -49,15 +49,43 @@ function damageFlash(scope: Scope): void {
   scope.after(500, () => el.remove());
 }
 
-/** A glowing ball of fire. */
-function fireballMesh(): THREE.Group {
-  const g = new THREE.Group();
-  g.add(new THREE.Mesh(new THREE.SphereGeometry(0.2, 16, 12), new THREE.MeshBasicMaterial({ color: 0xffe08a, toneMapped: false })));
-  const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: sparkTexture(), color: 0xff6a1a, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false }));
-  glow.scale.setScalar(1.1);
-  g.add(glow);
-  return g;
+const TRAIL = 8;
+
+/**
+ * A ball of fire: a white-hot core in flickering flame layers and a trail of
+ * embers. Call flicker each frame.
+ */
+function fireballMesh(): { root: THREE.Group; flicker(now: number): void; trail: THREE.Sprite[] } {
+  const root = new THREE.Group();
+  const flame = (color: number, size: number, opacity: number) => {
+    const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: sparkTexture(), color, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false, opacity }));
+    s.scale.setScalar(size);
+    root.add(s);
+    return s;
+  };
+  const core = new THREE.Mesh(new THREE.SphereGeometry(0.13, 16, 12), new THREE.MeshBasicMaterial({ color: 0xfff4d0, toneMapped: false }));
+  root.add(core);
+  const outer = flame(0xff3a0a, 1.3, 0.9);
+  const mid = flame(0xff8a1a, 0.85, 1);
+  const inner = flame(0xffe08a, 0.5, 1);
+  // Trail sprites live in the scene, not the group, so they stay behind as it moves.
+  const trail = Array.from({ length: TRAIL }, (_, i) => {
+    const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: sparkTexture(), color: 0xff6a1a, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false, opacity: 0.7 * (1 - i / TRAIL) }));
+    s.scale.setScalar(0.5 * (1 - i / TRAIL) + 0.1);
+    return s;
+  });
+  return {
+    root,
+    trail,
+    flicker: (now) => {
+      outer.scale.setScalar(1.2 + 0.2 * Math.sin(now / 47));
+      mid.scale.setScalar(0.8 + 0.12 * Math.sin(now / 31 + 1));
+      inner.scale.setScalar(0.5 + 0.08 * Math.sin(now / 23 + 2));
+      outer.material.rotation = now / 300;
+    },
+  };
 }
+type FireballMesh = ReturnType<typeof fireballMesh>;
 
 /** A broken-off piece shaped like the part it came from. */
 function debrisMesh(part: PartId | 'armor', color: THREE.Color, size: number): THREE.Object3D {
@@ -179,12 +207,30 @@ function playLevel(app: App, ctx: LevelContext, model: GLTF): Promise<LevelOutco
   const totalBalls = state.ballsLeft;
   let finished = false;
 
-  const actor = new Character(model, { heightM: opts.size, tint: level.tint });
+  // Tinting gives this dragon its own materials; then repaint them in the level's colors.
+  const actor = new Character(model, { heightM: opts.size, tint: 0xffffff });
+  for (const m of actor.materials) {
+    if (m.name === 'Dragon_Main') m.color.setHex(level.colors.main);
+    else if (m.name === 'Dragon_Secondary') m.color.setHex(level.colors.secondary);
+    else if (m.name === 'Dragon_Horn') m.color.setHex(0xf2ead8);
+    if (m.name.startsWith('Dragon')) {
+      m.roughness = 0.5;
+      m.metalness = 0.1;
+    }
+  }
+  /** A white-hot flash on a hit (the default red flash turns the whole dragon into a blob). */
+  const flash = () => {
+    for (const m of actor.materials) {
+      m.emissive.setHex(0xffffff);
+      m.emissiveIntensity = 0.35;
+    }
+    scope.after(110, () => actor.materials.forEach((m) => m.emissive.setHex(0x000000)));
+  };
   const bone = bones(actor);
   const k = opts.size / 2;
   scope.add(actor.root);
   scope.onDispose(() => actor.dispose());
-  const skinColor = new THREE.Color(0xd07a3a).multiply(new THREE.Color(level.tint));
+  const skinColor = new THREE.Color(level.colors.main);
 
   // Flight: the phase moves along the path, easing to a stop for each hover.
   let phase = 0;
@@ -252,7 +298,10 @@ function playLevel(app: App, ctx: LevelContext, model: GLTF): Promise<LevelOutco
   };
   refresh();
 
-  const fireballs = new Map<number, THREE.Group>();
+  const fireballs = new Map<number, FireballMesh>();
+  // One light follows the nearest fireball. It is always in the scene (dark when
+  // there is no fireball): adding and removing lights makes three.js rebuild every shader.
+  const fireLight = scope.add(new THREE.PointLight(0xff7a1a, 0, 5, 1.6));
   app.debugAim = (key) => {
     const fire = state.fireballs[0];
     if (fire && key !== 'dragon') return fireballAt(fire, performance.now());
@@ -260,11 +309,31 @@ function playLevel(app: App, ctx: LevelContext, model: GLTF): Promise<LevelOutco
     return targets().find((t) => t.part === part)?.center ?? targets()[0]?.center ?? null;
   };
 
+  /** Each trail sprite eases toward the one ahead of it, so the trail curves behind the fireball. */
+  const followTrail = (mesh: FireballMesh) => {
+    let lead = mesh.root.position;
+    for (const s of mesh.trail) {
+      s.position.lerp(lead, 0.45);
+      lead = s.position;
+    }
+  };
+  const removeFireball = (mesh: FireballMesh) => {
+    scope.remove(mesh.root);
+    for (const s of mesh.trail) scope.remove(s);
+  };
+
+  // Wingbeats kick up dust on the court below while the dragon hovers.
+  scope.every(650, () => {
+    if (!alive || finished || !isHovering(opts, startedAt, performance.now())) return;
+    const p = actor.root.position;
+    groundRipple(scope, { x: p.x, y: 0, z: p.z }, 0xffb36b);
+  });
+
   return new Promise((resolve) => {
     const finish = async (passed: boolean) => {
       if (finished) return;
       finished = true;
-      for (const mesh of fireballs.values()) scope.remove(mesh);
+      for (const mesh of fireballs.values()) removeFireball(mesh);
       fireballs.clear();
       if (passed) {
         alive = false;
@@ -337,7 +406,12 @@ function playLevel(app: App, ctx: LevelContext, model: GLTF): Promise<LevelOutco
       const t = tick(state, opts, now, mouth, Math.random);
       state = t.state;
       for (const f of t.launched) {
-        const mesh = scope.add(fireballMesh());
+        const mesh = fireballMesh();
+        scope.add(mesh.root);
+        for (const s of mesh.trail) {
+          s.position.set(mouth.x, mouth.y, mouth.z);
+          scope.add(s);
+        }
         fireballs.set(f.id, mesh);
         react('Headbutt', 1.8);
         music.sfx('count');
@@ -346,7 +420,7 @@ function playLevel(app: App, ctx: LevelContext, model: GLTF): Promise<LevelOutco
       for (const f of t.burned) {
         const mesh = fireballs.get(f.id);
         fireballs.delete(f.id);
-        if (mesh) scope.remove(mesh);
+        if (mesh) removeFireball(mesh);
         burst(scope, f.to, 0xff6a1a, 0.8);
         damageFlash(scope);
         app.stage.shake(0.15, 350);
@@ -357,9 +431,13 @@ function playLevel(app: App, ctx: LevelContext, model: GLTF): Promise<LevelOutco
         const mesh = fireballs.get(f.id);
         if (!mesh) continue;
         const p = fireballAt(f, now);
-        mesh.position.set(p.x, p.y, p.z);
-        mesh.scale.setScalar(1 + 0.12 * Math.sin(now / 60));
+        mesh.root.position.set(p.x, p.y, p.z);
+        mesh.flicker(now);
+        followTrail(mesh);
       }
+      const lit = state.fireballs.length ? fireballs.get(state.fireballs[0].id) : undefined;
+      fireLight.intensity = lit ? 7 + 2 * Math.sin(now / 41) : 0;
+      if (lit) fireLight.position.copy(lit.root.position);
       if (t.burned.length) {
         refresh();
         if (isOver(state)) void finish(false);
@@ -385,8 +463,16 @@ function playLevel(app: App, ctx: LevelContext, model: GLTF): Promise<LevelOutco
       if (!mesh) return;
       const to = targetOf('body');
       const start = new THREE.Vector3(from.x, from.y, from.z);
-      await scope.animate(350, (t) => mesh.position.lerpVectors(start, to, t), linear);
-      scope.remove(mesh);
+      await scope.animate(
+        350,
+        (t) => {
+          mesh.root.position.lerpVectors(start, to, t);
+          mesh.flicker(performance.now());
+          followTrail(mesh);
+        },
+        linear,
+      );
+      removeFireball(mesh);
       burst(scope, to, 0xff6a1a, 1);
       shockwave(scope, to, 0xff6a1a, 2);
       if (alive) react('HitReact');
@@ -432,8 +518,7 @@ function playLevel(app: App, ctx: LevelContext, model: GLTF): Promise<LevelOutco
           setValue(lastEl, 'ARMOR', true);
         } else {
           burst(scope, where, PART_COLORS[result.part], 0.5);
-          actor.flash(true);
-          scope.after(140, () => actor.flash(false));
+          flash();
           react('HitReact');
           if (result.broke) breakPart(result.part, where);
           else {
@@ -455,6 +540,9 @@ function playLevel(app: App, ctx: LevelContext, model: GLTF): Promise<LevelOutco
 
 export function dragonScreen(app: App, scope: Scope): void {
   app.world.show('volcano');
+  // Lava and fire glow; the other games keep the plain renderer.
+  app.stage.setBloom(0.7);
+  scope.onDispose(() => app.stage.setBloom(0));
   void loadModel(DRAGON_MODEL).then((model) => {
     if (!scope.alive) return;
     void runLevels(app, scope, {
