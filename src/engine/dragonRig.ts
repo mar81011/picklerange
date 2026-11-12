@@ -15,6 +15,24 @@ export interface DragonLook {
   belly: number;
   /** Wing membranes. */
   membrane: number;
+  /** Eye glow (default gold). */
+  eyes?: number;
+  horns: 'none' | 'nubs' | 'swept' | 'ram' | 'crown';
+  /** bat: smooth scallops; ragged: torn, jagged edges; broad: longer span. */
+  wings: 'bat' | 'ragged' | 'broad';
+  tail: 'spade' | 'club' | 'blade';
+  /** A fan of webbed spines behind the head. */
+  frill?: boolean;
+  /** Long barbels hanging from the snout. */
+  whiskers?: boolean;
+  /** Glowing spots down the flanks and tail, and glowing wing veins. */
+  glow?: number;
+  /** Multipliers (default 1): back-spike size, body thickness, eye size. */
+  spikes?: number;
+  bulk?: number;
+  eyeSize?: number;
+  /** Head scale relative to the body (default 1.55). */
+  headSize?: number;
 }
 
 type Curve = THREE.CatmullRomCurve3;
@@ -245,7 +263,8 @@ function spike(points: [number, number, number][], base: number, look: { main: T
  * Between neighbouring finger tips the trailing edge sags inward in a scallop,
  * and the skin billows a little.
  */
-function membrane(hub: THREE.Vector3, chain: THREE.Vector3[], scallopAfter: number): THREE.BufferGeometry {
+function membrane(hub: THREE.Vector3, chain: THREE.Vector3[], scallopAfter: number, sag = 0.2, jag = 0, seed = 1): THREE.BufferGeometry {
+  const rand = seededRandom(seed);
   const positions: number[] = [];
   const uvs: number[] = [];
   const indices: number[] = [];
@@ -257,7 +276,8 @@ function membrane(hub: THREE.Vector3, chain: THREE.Vector3[], scallopAfter: numb
     for (let s = 0; s < across; s++) {
       const u = s / across;
       const p = chain[i].clone().lerp(chain[i + 1], u);
-      if (i >= scallopAfter) p.lerp(hub, 0.2 * Math.sin(Math.PI * u));
+      // Ragged wings get a torn, uneven edge (never at the finger tips, s = 0).
+      if (i >= scallopAfter) p.lerp(hub, (sag + (s ? jag * rand() : 0)) * Math.sin(Math.PI * u));
       edge.push(p);
     }
   }
@@ -334,8 +354,8 @@ export class DragonRig {
 
     const skin = this.material({ vertexColors: true, map, normalMap: normal, normalScale: new THREE.Vector2(0.9, 0.9), roughness: 0.5, metalness: 0.05, envMap: env, envMapIntensity: 0.45 });
     const ivory = this.material({ vertexColors: true, roughness: 0.55, metalness: 0, envMap: env, envMapIntensity: 0.2 });
-    const wingSkin = this.material({ color: look.membrane, map: membraneTexture(), side: THREE.DoubleSide, roughness: 0.75, emissive: look.membrane, emissiveIntensity: 0.12, envMap: env, envMapIntensity: 0.2 });
-    const eyeGlow = this.material({ color: 0xffc23a, emissive: 0xffa21a, emissiveIntensity: 2.2, roughness: 0.2 });
+    const wingSkin = this.material({ color: look.membrane, map: membraneTexture(), side: THREE.DoubleSide, roughness: 0.75, emissive: look.glow ?? look.membrane, emissiveIntensity: look.glow !== undefined ? 0.1 : 0.12, envMap: env, envMapIntensity: 0.2 });
+    const eyeGlow = this.material({ color: look.eyes ?? 0xffc23a, emissive: look.eyes ?? 0xffa21a, emissiveIntensity: 2.2, roughness: 0.2 });
     const dark = this.material({ color: 0x120808, roughness: 0.3 });
     const mouth = this.material({ color: 0x5a1218, roughness: 0.6, emissive: 0xff3a10, emissiveIntensity: 0.15 });
 
@@ -345,17 +365,29 @@ export class DragonRig {
       parent.add(m);
       return m;
     };
+    /** Marks a mesh as decoration that doesn't count toward the dragon's size. */
+    const extra = (m: THREE.Mesh) => ((m.userData.extra = true), m);
 
     // Body, posed upright as if hovering: chest toward the player, tail hanging below.
-    mesh(
-      sweep(curve([0, -0.05, -0.2], [0, 0.18, -0.13], [0, 0.45, -0.02], [0, 0.68, 0.03], [0, 0.84, 0.07]), colors, {
-        radius: (t) => 0.19 + Math.sin(Math.PI * Math.min(1, t * 0.9)) * 0.13 - t * 0.04,
-        depth: 0.88,
-        uRepeat: 4,
-      }),
-      skin,
-      this.body,
-    );
+    const bulk = look.bulk ?? 1;
+    const spikeSize = look.spikes ?? 1;
+    const bodyPath = curve([0, -0.05, -0.2], [0, 0.18, -0.13], [0, 0.45, -0.02], [0, 0.68, 0.03], [0, 0.84, 0.07]);
+    const bodyRadius = (t: number) => (0.19 + Math.sin(Math.PI * Math.min(1, t * 0.9)) * 0.13 - t * 0.04) * bulk;
+    mesh(sweep(bodyPath, colors, { radius: bodyRadius, depth: 0.88, uRepeat: 4 }), skin, this.body);
+    // Glowing markings: spots down both flanks.
+    const glow = look.glow !== undefined ? this.material({ color: look.glow, emissive: look.glow, emissiveIntensity: 1.8, roughness: 0.4 }) : null;
+    if (glow) {
+      for (const s of [-1, 1]) {
+        for (let i = 1; i < 7; i++) {
+          const t = i / 7.5;
+          const c = bodyPath.getPointAt(t);
+          const r = bodyRadius(t);
+          const spot = mesh(new THREE.SphereGeometry(0.03 * (1 - t * 0.4), 10, 8), glow, this.body);
+          spot.position.set(s * r * 0.93, c.y, c.z + r * 0.2);
+          spot.scale.set(0.35, 1, 1);
+        }
+      }
+    }
 
     // Neck and head (the neck group nods; the head looks at the player).
     this.neck.position.set(0, 0.8, 0.06);
@@ -366,12 +398,13 @@ export class DragonRig {
       const t = i / 5;
       const y = -0.02 + t * 0.4;
       const z = -0.1 + t * 0.22 - 0.02;
-      mesh(spike([[0, y, z], [0, y + 0.05, z - 0.07], [0, y + 0.08, z - 0.12]], 0.025 - t * 0.008, bone), ivory, this.neck);
+      mesh(spike([[0, y, z], [0, y + 0.05 * spikeSize, z - 0.07 * spikeSize], [0, y + 0.08 * spikeSize, z - 0.12 * spikeSize]], (0.025 - t * 0.008) * spikeSize, bone), ivory, this.neck);
     }
 
     this.head.position.set(0, 0.42, 0.24);
     // Big head: it's the prize target, and the camera sees it from above.
-    this.head.scale.setScalar(1.55);
+    const headSize = look.headSize ?? 1.55;
+    this.head.scale.setScalar(headSize);
     this.neck.add(this.head);
     const headColors = { main, belly };
     // Skull: wide at the back, tapering to the snout, a little flattened.
@@ -390,20 +423,35 @@ export class DragonRig {
     for (const s of [-1, 1]) {
       mesh(sweep(curve([s * 0.035, 0.075, 0.04], [s * 0.08, 0.08, 0.1], [s * 0.065, 0.06, 0.17]), colors, { radius: (t) => 0.026 * (1 - t * 0.6), segments: 10, radial: 8, ref: v3(0, 1, 0) }), skin, this.head);
       // Eye: a glowing ball with a dark slit pupil.
-      const eye = mesh(new THREE.SphereGeometry(0.026, 16, 12), eyeGlow, this.head);
+      const eye = mesh(new THREE.SphereGeometry(0.026 * (look.eyeSize ?? 1), 16, 12), eyeGlow, this.head);
       eye.position.set(s * 0.078, 0.045, 0.12);
-      const pupil = mesh(new THREE.SphereGeometry(0.026, 12, 8), dark, eye);
+      const pupil = mesh(new THREE.SphereGeometry(0.026 * (look.eyeSize ?? 1), 12, 8), dark, eye);
       pupil.scale.set(0.18, 0.85, 0.5);
       pupil.position.set(s * 0.008, 0, 0.012);
-      // Horns sweep back and up.
-      mesh(spike([[s * 0.06, 0.07, -0.02], [s * 0.1, 0.16, -0.1], [s * 0.13, 0.27, -0.12], [s * 0.12, 0.37, -0.06]], 0.038, bone), ivory, this.head);
-      // A smaller pair of cheek horns.
-      mesh(spike([[s * 0.09, -0.01, -0.02], [s * 0.15, 0.0, -0.08], [s * 0.2, 0.03, -0.1]], 0.022, bone, v3(0, 1, 0)), ivory, this.head);
+      this.horns(look.horns, s, bone, ivory, mesh);
+      if (look.whiskers) {
+        extra(mesh(spike([[s * 0.04, -0.01, 0.3], [s * 0.12, -0.05, 0.35], [s * 0.2, -0.14, 0.33], [s * 0.24, -0.26, 0.28]], 0.009, bone, v3(0, 0, 1)), ivory, this.head));
+      }
       // Nostril.
       const nostril = mesh(new THREE.SphereGeometry(0.012, 8, 6), dark, this.head);
       nostril.position.set(s * 0.025, 0.012, 0.32);
       // Upper fangs.
       for (const z of [0.16, 0.22, 0.28]) mesh(spike([[s * 0.045, -0.035, z], [s * 0.045, -0.07, z + 0.005]], 0.011, bone), ivory, this.head);
+    }
+    if (look.horns === 'crown') {
+      // A horn on the nose.
+      extra(mesh(spike([[0, 0.03, 0.25], [0, 0.08, 0.28], [0, 0.13, 0.27]], 0.022, bone), ivory, this.head));
+    }
+    if (look.frill) {
+      // A fan of spines behind the head, webbed with wing skin.
+      const hub = v3(0, 0.02, -0.07);
+      const tips: THREE.Vector3[] = [];
+      for (let i = 0; i <= 6; i++) {
+        const a = -1.75 + (3.5 * i) / 6;
+        tips.push(v3(Math.sin(a) * 0.24, 0.02 + Math.cos(a) * 0.22, -0.15));
+      }
+      for (const tip of tips) extra(mesh(spike([[hub.x, hub.y, hub.z], [tip.x, tip.y, tip.z]], 0.012, bone, v3(0, 0, 1)), ivory, this.head));
+      extra(mesh(membrane(hub, tips, 0, 0.18, 0, 9), wingSkin, this.head));
     }
     // A ridge of small spikes along the top of the skull.
     for (let i = 0; i < 4; i++) {
@@ -451,7 +499,14 @@ export class DragonRig {
       for (let s = 1; s < 4; s++) {
         const p = tailPath.getPointAt(cuts[i] + ((cuts[i + 1] - cuts[i]) * s) / 4).sub(start);
         const r = r0 + ((r1 - r0) * s) / 4;
-        mesh(spike([[p.x, p.y, p.z - r * 0.8], [p.x, p.y + 0.02, p.z - r * 0.8 - 0.06 * (1 - cuts[i])]], 0.02 * (1 - cuts[i]) + 0.006, bone), ivory, seg);
+        mesh(spike([[p.x, p.y, p.z - r * 0.8], [p.x, p.y + 0.02, p.z - r * 0.8 - 0.06 * (1 - cuts[i]) * spikeSize]], (0.02 * (1 - cuts[i]) + 0.006) * spikeSize, bone), ivory, seg);
+        if (glow && i < 2) {
+          for (const side of [-1, 1]) {
+            const spot = mesh(new THREE.SphereGeometry(0.022 * (1 - cuts[i] * 0.6), 8, 6), glow, seg);
+            spot.position.set(p.x + side * r * 0.75, p.y, p.z + r * 0.4);
+            spot.scale.set(0.4, 1, 1);
+          }
+        }
       }
       this.tail.push(seg);
       parent = seg;
@@ -459,11 +514,36 @@ export class DragonRig {
     }
     // The spade at the tip.
     const tip = tailPath.getPointAt(1).sub(origin);
-    const spade = mesh(new THREE.ConeGeometry(0.06, 0.16, 4), ivory, this.tail[2]);
-    spade.position.set(tip.x + 0.03, tip.y, tip.z + 0.06);
-    spade.rotation.set(Math.PI / 2.4, 0, -0.9);
-    spade.scale.set(1, 1, 0.3);
-    (spade.geometry as THREE.BufferGeometry).setAttribute('color', new THREE.Float32BufferAttribute(new Array(spade.geometry.getAttribute('position').count * 3).fill(0.9), 3));
+    const pale = (m: THREE.Mesh) => m.geometry.setAttribute('color', new THREE.Float32BufferAttribute(new Array(m.geometry.getAttribute('position').count * 3).fill(0.9), 3));
+    if (look.tail === 'spade') {
+      const spade = mesh(new THREE.ConeGeometry(0.06, 0.16, 4), ivory, this.tail[2]);
+      spade.position.set(tip.x + 0.03, tip.y, tip.z + 0.06);
+      spade.rotation.set(Math.PI / 2.4, 0, -0.9);
+      spade.scale.set(1, 1, 0.3);
+      pale(spade);
+    } else if (look.tail === 'club') {
+      // A bony club studded with spikes.
+      const club = mesh(new THREE.IcosahedronGeometry(0.075, 1), ivory, this.tail[2]);
+      club.position.set(tip.x + 0.02, tip.y, tip.z + 0.03);
+      pale(club);
+      const rand = seededRandom(31);
+      for (let i = 0; i < 7; i++) {
+        const d = v3(rand() - 0.5, rand() - 0.5, rand() - 0.5).normalize();
+        const a = club.position.clone().addScaledVector(d, 0.06);
+        const b = club.position.clone().addScaledVector(d, 0.13);
+        mesh(spike([[a.x, a.y, a.z], [b.x, b.y, b.z]], 0.022, bone, Math.abs(d.y) > 0.9 ? v3(1, 0, 0) : v3(0, 1, 0)), ivory, this.tail[2]);
+      }
+    } else {
+      // A blade-like fin: three flat points fanned out.
+      for (const [angle, len] of [[-0.9, 0.3], [-1.4, 0.2], [-0.4, 0.2]] as const) {
+        const blade = mesh(new THREE.ConeGeometry(0.055, len, 4), ivory, this.tail[2]);
+        blade.position.set(tip.x + 0.03, tip.y, tip.z + 0.06);
+        blade.rotation.set(Math.PI / 2.4, 0, angle);
+        blade.scale.set(1, 1, 0.25);
+        blade.translateY(len / 2 - 0.04);
+        pale(blade);
+      }
+    }
 
     // Limbs. Arms (the breakable claws) hang from the chest; legs from the hips.
     const limb = (s: number, joints: [number, number, number][], thick: number, parentGroup: THREE.Object3D) => {
@@ -481,10 +561,10 @@ export class DragonRig {
       return g;
     };
     this.arms = {
-      L: limb(-1, [[0.16, 0.56, 0.12], [0.3, 0.38, 0.22], [0.28, 0.2, 0.3], [0.27, 0.12, 0.35]], 0.075, this.body),
-      R: limb(1, [[0.16, 0.56, 0.12], [0.3, 0.38, 0.22], [0.28, 0.2, 0.3], [0.27, 0.12, 0.35]], 0.075, this.body),
+      L: limb(-1, [[0.16, 0.56, 0.12], [0.3, 0.38, 0.22], [0.28, 0.2, 0.3], [0.27, 0.12, 0.35]], 0.075 * bulk, this.body),
+      R: limb(1, [[0.16, 0.56, 0.12], [0.3, 0.38, 0.22], [0.28, 0.2, 0.3], [0.27, 0.12, 0.35]], 0.075 * bulk, this.body),
     };
-    for (const s of [-1, 1]) limb(s, [[0.16, 0.02, -0.1], [0.3, -0.14, 0.06], [0.28, -0.38, -0.02], [0.28, -0.45, 0.08]], 0.1, this.body);
+    for (const s of [-1, 1]) limb(s, [[0.16, 0.02, -0.1], [0.3, -0.14, 0.06], [0.28, -0.38, -0.02], [0.28, -0.45, 0.08]], 0.1 * bulk, this.body);
 
     // Wings: arm bones out to the wrist, four fingers fanning out, membranes between.
     const wing = (s: number) => {
@@ -496,7 +576,8 @@ export class DragonRig {
       const S = P(0.13, 0.7, -0.12);
       const E = P(0.55, 0.92, -0.22);
       const W = P(1.0, 0.8, -0.2);
-      const F = [P(1.78, 1.02, -0.26), P(1.8, 0.5, -0.26), P(1.55, 0.06, -0.22), P(1.08, -0.18, -0.2)];
+      const span = look.wings === 'broad' ? 1.15 : 1;
+      const F = [P(1.78 * span, 1.02 * span, -0.26), P(1.8 * span, 0.5, -0.26), P(1.55 * span, 0.06, -0.22), P(1.08 * span, -0.18, -0.2)];
       const B = P(0.12, 0.12, -0.16);
       const bones = (a: THREE.Vector3, b: THREE.Vector3, r0: number, r1: number) =>
         mesh(sweep(new THREE.CatmullRomCurve3([a, a.clone().lerp(b, 0.5).add(v3(0, 0.02, 0)), b]), colors, { radius: (t) => r0 + (r1 - r0) * t, segments: 10, radial: 10, ref: v3(0, 0, 1) }), skin, g);
@@ -506,8 +587,10 @@ export class DragonRig {
       // Thumb claw at the wrist.
       mesh(spike([[W.x, W.y, W.z], [W.x + s * 0.02, W.y + 0.06, W.z + 0.03], [W.x + s * 0.0, W.y + 0.1, W.z + 0.07]], 0.02, bone), ivory, g);
       // Membranes: between the fingers, and from the last finger back to the body.
-      mesh(membrane(W, F, 0), wingSkin, g);
-      mesh(membrane(S, [E, W, F[3], B], 2), wingSkin, g);
+      const sag = look.wings === 'ragged' ? 0.28 : look.wings === 'broad' ? 0.14 : 0.2;
+      const jag = look.wings === 'ragged' ? 0.25 : 0;
+      mesh(membrane(W, F, 0, sag, jag, s > 0 ? 11 : 12), wingSkin, g);
+      mesh(membrane(S, [E, W, F[3], B], 2, sag, jag, s > 0 ? 13 : 14), wingSkin, g);
       return g;
     };
     this.wings = { L: wing(-1), R: wing(1) };
@@ -525,24 +608,70 @@ export class DragonRig {
       parentObj.add(o);
       this.markers.push({ part, object: o, radius });
     };
-    marker('head', this.head, v3(0, 0.0, 0.12), 0.22);
-    marker('body', this.body, v3(0, 0.38, 0.1), 0.36);
-    marker('wingL', this.wings.L, v3(-1.05, -0.2, -0.1), 0.55);
-    marker('wingR', this.wings.R, v3(1.05, -0.2, -0.1), 0.55);
-    marker('clawL', this.arms.L, v3(-0.11, -0.4, 0.22), 0.24);
-    marker('clawR', this.arms.R, v3(0.11, -0.4, 0.22), 0.24);
+    // Generous on purpose: a real ball off the wall is never pin-point.
+    marker('head', this.head, v3(0, 0.0, 0.1), 0.19 * headSize);
+    marker('body', this.body, v3(0, 0.38, 0.1), 0.4 * bulk);
+    marker('wingL', this.wings.L, v3(-1.05, -0.2, -0.1), 0.6);
+    marker('wingR', this.wings.R, v3(1.05, -0.2, -0.1), 0.6);
+    marker('clawL', this.arms.L, v3(-0.11, -0.4, 0.22), 0.29);
+    marker('clawR', this.arms.R, v3(0.11, -0.4, 0.22), 0.29);
     // On the visible curl, inside the piece that breaks off.
-    marker('tail', this.tail[1], tailPath.getPointAt(0.72).sub(tailPath.getPointAt(0.34)), 0.26);
+    marker('tail', this.tail[1], tailPath.getPointAt(0.72).sub(tailPath.getPointAt(0.34)), 0.31);
 
     // Scale to the requested height and stand the lowest point (the tail tip) on y = 0.
     const inner = new THREE.Group();
     inner.add(this.body);
     this.root.add(inner);
     inner.updateMatrixWorld(true);
-    const box = new THREE.Box3().setFromObject(inner);
+    // Measure without horns, frills and whiskers, so every dragon's body comes out the same size.
+    const box = new THREE.Box3();
+    inner.traverse((o) => {
+      if (!(o instanceof THREE.Mesh) || o.userData.extra) return;
+      o.geometry.computeBoundingBox();
+      box.union(o.geometry.boundingBox!.clone().applyMatrix4(o.matrixWorld));
+    });
     this.scale = size / (box.max.y - box.min.y);
     inner.scale.setScalar(this.scale);
     inner.position.y = -box.min.y * this.scale;
+  }
+
+  /** One side's horns (s = -1 left, 1 right), in head units. They don't count toward the dragon's size. */
+  private horns(
+    kind: DragonLook['horns'],
+    s: number,
+    bone: { main: THREE.Color; belly: THREE.Color },
+    ivory: THREE.Material,
+    mesh: (g: THREE.BufferGeometry, m: THREE.Material, p: THREE.Object3D) => THREE.Mesh,
+  ): void {
+    const horn = (points: [number, number, number][], base: number, ref?: THREE.Vector3) => {
+      mesh(spike(points, base, bone, ref), ivory, this.head).userData.extra = true;
+    };
+    const swept = () => horn([[s * 0.06, 0.07, -0.02], [s * 0.1, 0.16, -0.1], [s * 0.13, 0.27, -0.12], [s * 0.12, 0.37, -0.06]], 0.038);
+    const cheek = () => horn([[s * 0.09, -0.01, -0.02], [s * 0.15, 0.0, -0.08], [s * 0.2, 0.03, -0.1]], 0.022, v3(0, 1, 0));
+    switch (kind) {
+      case 'none':
+        return;
+      case 'nubs':
+        horn([[s * 0.055, 0.07, -0.01], [s * 0.07, 0.11, -0.04], [s * 0.075, 0.14, -0.07]], 0.032);
+        return;
+      case 'swept':
+        swept();
+        cheek();
+        return;
+      case 'ram':
+        // Thick horns curling back, down and forward beside the face.
+        horn([[s * 0.07, 0.07, -0.02], [s * 0.15, 0.13, -0.09], [s * 0.22, 0.08, -0.15], [s * 0.25, -0.03, -0.11], [s * 0.22, -0.08, -0.02], [s * 0.18, -0.04, 0.04]], 0.05);
+        return;
+      case 'crown':
+        swept();
+        cheek();
+        // More horns fanning back behind the main pair.
+        for (let k = 1; k <= 3; k++) {
+          const x = s * (0.05 + 0.025 * k);
+          horn([[x, 0.06 - 0.02 * k, -0.05], [x * 1.6, 0.12 - 0.02 * k, -0.15], [x * 2.1, 0.2 - 0.05 * k, -0.22 + 0.02 * k]], 0.026 - 0.003 * k);
+        }
+        return;
+    }
   }
 
   private material(params: THREE.MeshStandardMaterialParameters): THREE.MeshStandardMaterial {

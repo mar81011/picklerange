@@ -46,7 +46,7 @@ export const POINTS = {
 export const BREAK_DAMAGE = 4;
 export const FIREBALL_DAMAGE = 3;
 /** How far a ray may pass outside a part and still count (the ball and the dragon both move). */
-export const AIM_ASSIST = 0.12;
+export const AIM_ASSIST = 0.2;
 export const FIREBALL_RADIUS = 0.3;
 
 export interface DragonOptions {
