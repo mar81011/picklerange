@@ -66,7 +66,7 @@ const click = async (p) => {
 };
 const aim = (key) => evaluate(`window.__aim(${key ? JSON.stringify(key) : ''})`);
 const ended = () => evaluate(`!!document.querySelector('.qr, .board-rows, .name-box, .party-end')`);
-const PACE = { bullseye: 1100, popup: 650, opencourt: 2300, bricks: 1100, zombies: 800, gallery: 800, rally: 1100, tictactoe: 1700, memory: 1500, darts: 1400 };
+const PACE = { bullseye: 1100, popup: 650, opencourt: 2300, bricks: 1100, zombies: 800, gallery: 800, rally: 1100, dunk: 1300, tictactoe: 1700, memory: 1500, darts: 1400 };
 
 async function openMenu(level = 1) {
   await send('Page.navigate', { url: `http://localhost:5173/?level=${level}` });

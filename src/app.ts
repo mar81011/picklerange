@@ -17,6 +17,7 @@ import { menuScreen } from './screens/menu';
 import { openCourtScreen } from './screens/opencourt';
 import { popUpScreen } from './screens/popup';
 import { rallyScreen } from './screens/rally';
+import { dunkScreen } from './screens/dunk';
 import { ticTacToeScreen } from './screens/tictactoe';
 import { zombiesScreen } from './screens/zombies';
 
@@ -28,6 +29,7 @@ const SCREENS: Record<GameId, (app: App, scope: Scope) => void> = {
   zombies: zombiesScreen,
   gallery: galleryScreen,
   rally: rallyScreen,
+  dunk: dunkScreen,
   tictactoe: ticTacToeScreen,
   darts: (app, scope) => void dartsScreen(app, scope),
   memory: memoryScreen,

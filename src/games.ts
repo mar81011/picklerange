@@ -11,6 +11,7 @@ export type GameId =
   | 'zombies'
   | 'gallery'
   | 'rally'
+  | 'dunk'
   | 'tictactoe'
   | 'darts'
   | 'memory';
@@ -82,6 +83,14 @@ export const GAMES: readonly GameInfo[] = [
     tagline: '5 levels • feeder pace',
     howTo: 'Each ball, a zone lights up on the court. Land your shot in it!\nMiss the zone, or don’t hit in time, and you lose a life.',
     accent: '#06d6a0',
+    mode: 'solo',
+  },
+  {
+    id: 'dunk',
+    title: 'DUNK TANK',
+    tagline: '5 levels • soak the clown',
+    howTo: 'Hit the RED circle on the target to drop the clown into the water!\nHitting the clown or the white rim won’t dunk him. Get enough dunks before your balls run out.',
+    accent: '#3fa0ff',
     mode: 'solo',
   },
   {

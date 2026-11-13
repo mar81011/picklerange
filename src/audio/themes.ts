@@ -51,6 +51,7 @@ export type ThemeId =
   | 'zombies'
   | 'gallery'
   | 'rally'
+  | 'dunk'
   | 'tictactoe'
   | 'darts'
   | 'memory';
@@ -111,6 +112,13 @@ export const THEMES: Record<ThemeId, Theme> = {
     kick: 'x..x....x..x....', snare: '....x.......x...', hat: '..x...x...x...x.',
     bass: 'x..x..o.x..x..o.', bassWave: 'triangle', lead: 'arp', leadWave: 'sine', leadEvery: 2, leadOctave: 24,
     pad: null, swing: 0.12, volume: 0.9, seed: 8,
+  },
+  // Circus oom-pah: bouncy bass, plucky major arpeggios.
+  dunk: {
+    bpm: 132, root: 55, scale: MAJOR, progression: [0, 4, 0, 4],
+    kick: 'x.......x.......', snare: '....x.......x...', hat: '',
+    bass: 'x...o...x...o...', bassWave: 'triangle', lead: 'melody', leadWave: 'square', leadEvery: 2, leadOctave: 12,
+    pad: null, swing: 0, volume: 0.8, seed: 13,
   },
   // Floating space ambience.
   tictactoe: {

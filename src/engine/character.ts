@@ -5,6 +5,12 @@ import { GLTFLoader, type GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js';
 
 const cache = new Map<string, Promise<GLTF>>();
+const _a = new THREE.Vector3();
+const _b = new THREE.Vector3();
+const _c = new THREE.Vector3();
+const _q1 = new THREE.Quaternion();
+const _q2 = new THREE.Quaternion();
+const _q3 = new THREE.Quaternion();
 
 export function loadModel(url: string): Promise<GLTF> {
   let promise = cache.get(url);
@@ -145,6 +151,34 @@ export class Character {
     this.mixer.update(dt);
     // After the animation, which may have set these bones' scale.
     this.applyHidden();
+    for (const fn of this.afterUpdate) fn();
+  }
+
+  /** Runs after each animation update, e.g. to pose bones by hand on top of a clip. */
+  readonly afterUpdate: (() => void)[] = [];
+
+  bone(name: string): THREE.Object3D | undefined {
+    return this.model.getObjectByName(name);
+  }
+
+  /**
+   * Turns a bone so the line from it to `child` points along `dir` (in the
+   * character's own space: +z forward, +y up, +x to its left), keeping the
+   * rest of the pose. `weight` blends from the animation (0) to the aim (1).
+   */
+  aimBone(name: string, child: string, dir: THREE.Vector3, weight = 1): void {
+    const bone = this.model.getObjectByName(name);
+    const tip = this.model.getObjectByName(child);
+    if (!bone || !tip || !bone.parent) return;
+    bone.updateWorldMatrix(true, true);
+    const from = bone.getWorldPosition(_a);
+    const current = tip.getWorldPosition(_b).sub(from).normalize();
+    const want = _c.copy(dir).normalize().applyQuaternion(this.root.getWorldQuaternion(_q1));
+    const delta = _q2.setFromUnitVectors(current, want);
+    if (weight < 1) delta.slerp(_q3.identity(), 1 - weight);
+    const world = bone.getWorldQuaternion(_q3).premultiply(delta);
+    bone.quaternion.copy(bone.parent.getWorldQuaternion(_q1).invert().multiply(world));
+    bone.updateWorldMatrix(false, true);
   }
 
   /** Brief red flash, for hits. Only works on tinted copies (they own their materials). */

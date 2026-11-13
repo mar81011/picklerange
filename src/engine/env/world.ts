@@ -3,6 +3,7 @@
 import * as THREE from 'three';
 import type { Stage } from '../stage';
 import { beach } from './beach';
+import { carnival } from './carnival';
 import { graveyard } from './graveyard';
 import { lodge } from './lodge';
 import { neon } from './neon';
@@ -27,9 +28,10 @@ export type EnvironmentId =
   | 'beach'
   | 'space'
   | 'pub'
-  | 'lodge';
+  | 'lodge'
+  | 'carnival';
 
-const BUILDERS: Record<EnvironmentId, () => Environment> = { stadium, park, neon, synthwave, graveyard, range, beach, space, pub, lodge };
+const BUILDERS: Record<EnvironmentId, () => Environment> = { stadium, park, neon, synthwave, graveyard, range, beach, space, pub, lodge, carnival };
 
 export class World {
   private built = new Map<EnvironmentId, Environment>();

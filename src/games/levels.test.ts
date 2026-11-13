@@ -10,10 +10,11 @@ import { POPUP_LEVELS } from './popup/levels';
 import { GALLERY_LEVELS } from './gallery/levels';
 import { RALLY_LEVELS } from './rally/levels';
 import { ZOMBIE_LEVELS } from './zombies/levels';
+import { DUNK_LEVELS } from './dunk/levels';
 
 describe('level tables', () => {
   it('give every game 5 levels', () => {
-    for (const levels of [BULLSEYE_LEVELS, POPUP_LEVELS, OPEN_COURT_LEVELS, BRICK_LEVELS, ZOMBIE_LEVELS, GALLERY_LEVELS, RALLY_LEVELS]) {
+    for (const levels of [BULLSEYE_LEVELS, POPUP_LEVELS, OPEN_COURT_LEVELS, BRICK_LEVELS, ZOMBIE_LEVELS, GALLERY_LEVELS, RALLY_LEVELS, DUNK_LEVELS]) {
       expect(levels).toHaveLength(5);
     }
   });

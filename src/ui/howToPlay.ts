@@ -8,6 +8,7 @@ import { POINTS as PLATE_POINTS } from '../games/gallery/logic';
 import { DROP_SHOT_BONUS, WINNER_POINTS } from '../games/opencourt/openCourtLogic';
 import { DEFAULT_POPUP, multiplierFor } from '../games/popup/popupLogic';
 import { POINTS_PER_RETURN, STREAK_BONUS } from '../games/rally/logic';
+import { POINTS as DUNK_POINTS } from '../games/dunk/logic';
 import { POINTS as ZOMBIE_POINTS } from '../games/zombies/logic';
 import { memoryPicture } from '../engine/memoryCards';
 import { brickPicture } from '../engine/props';
@@ -42,6 +43,19 @@ const bomb = svg(
   `<circle cx="50" cy="56" r="34" fill="#ff2b2b"/><rect x="44" y="12" width="12" height="14" rx="3" fill="#333"/>` +
     `<path d="M50 14 Q60 4 70 8" stroke="#ffd23f" stroke-width="4" fill="none"/>` +
     `<text x="50" y="72" font-size="44" font-weight="900" text-anchor="middle" fill="#fff" font-family="Arial">!</text>`,
+);
+
+/** The dunk target: red circle in a white rim; which part is highlighted. */
+const dunkTarget = (part: 'red' | 'rim') =>
+  svg(
+    `<circle cx="50" cy="50" r="44" fill="#222"/><circle cx="50" cy="50" r="40" fill="#fff" opacity="${part === 'rim' ? 1 : 0.5}"/>` +
+      `<circle cx="50" cy="50" r="28" fill="#e01e2e" opacity="${part === 'red' ? 1 : 0.45}"/><circle cx="50" cy="50" r="12" fill="none" stroke="#fff" stroke-width="3"/>`,
+  );
+
+const clownFace = svg(
+  `<circle cx="26" cy="46" r="15" fill="#ff7a1a"/><circle cx="74" cy="46" r="15" fill="#ff7a1a"/><circle cx="50" cy="52" r="30" fill="#f7f1ea"/>` +
+    `<path d="M36 18 L50 -4 L64 18 Z" fill="#2f6fd8"/><circle cx="40" cy="46" r="4" fill="#111"/><circle cx="60" cy="46" r="4" fill="#111"/>` +
+    `<circle cx="50" cy="56" r="7" fill="#ff1a1a"/><path d="M36 66 Q50 80 64 66" stroke="#d0101a" stroke-width="5" fill="none" stroke-linecap="round"/>`,
 );
 
 const streak = (text: string) =>
@@ -157,6 +171,11 @@ const LEGENDS: Record<GameId, LegendItem[]> = {
     { art: zone(true), label: 'Land in the zone', value: `+${POINTS_PER_RETURN}`, tone: 'good' },
     { art: streak(`+${STREAK_BONUS}`), label: 'Keep it going', value: `+${STREAK_BONUS} more each`, tone: 'good' },
     { art: zone(false), label: 'Miss or too slow', value: '−1 life', tone: 'bad' },
+  ],
+  dunk: [
+    { art: dunkTarget('red'), label: 'Red circle', value: `DUNK! +${DUNK_POINTS.dunk}`, tone: 'good' },
+    { art: dunkTarget('rim'), label: 'White rim', value: `So close +${DUNK_POINTS.rim}`, tone: 'plain' },
+    { art: clownFace, label: 'Hit the clown', value: 'He just laughs', tone: 'bad' },
   ],
   tictactoe: [
     { art: xo('X'), label: 'Player 1', value: 'X', tone: 'plain' },

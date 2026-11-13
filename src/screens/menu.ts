@@ -19,6 +19,7 @@ const ICONS: Record<GameId, string> = {
   zombies: '🧟',
   gallery: '🔫',
   rally: '🏓',
+  dunk: '🤡',
   tictactoe: '⭕',
   darts: '🎯',
   memory: '🃏',
