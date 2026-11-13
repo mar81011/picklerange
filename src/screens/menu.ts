@@ -17,7 +17,6 @@ const ICONS: Record<GameId, string> = {
   opencourt: '🤖',
   bricks: '🧱',
   zombies: '🧟',
-  dragon: '🐉',
   gallery: '🔫',
   rally: '🏓',
   tictactoe: '⭕',

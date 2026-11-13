@@ -10,7 +10,6 @@ import type { GameId, RoundResult } from './games';
 import { bricksScreen } from './screens/bricks';
 import { bullseyeScreen } from './screens/bullseye';
 import { dartsScreen } from './screens/darts';
-import { dragonScreen } from './screens/dragon';
 import { galleryScreen } from './screens/gallery';
 import { gameOverScreen } from './screens/gameover';
 import { memoryScreen } from './screens/memory';
@@ -27,7 +26,6 @@ const SCREENS: Record<GameId, (app: App, scope: Scope) => void> = {
   opencourt: openCourtScreen,
   bricks: bricksScreen,
   zombies: zombiesScreen,
-  dragon: dragonScreen,
   gallery: galleryScreen,
   rally: rallyScreen,
   tictactoe: ticTacToeScreen,

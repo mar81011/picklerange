@@ -390,35 +390,6 @@ body {
   animation: damage 0.5s ease-out forwards;
 }
 
-/* Dragon Hunt: the dragon's health, along the bottom (the top of the screen is sky the dragon flies in). */
-.dragon-health {
-  left: 660px;
-  top: 984px;
-  width: 600px;
-  padding: 8px 22px 12px;
-  box-sizing: border-box;
-  text-align: center;
-}
-
-.dragon-health .label { font-size: 20px; color: #ffb27a; margin-bottom: 6px; }
-
-.dragon-health .bar {
-  height: 18px;
-  border-radius: 9px;
-  background: rgba(255, 255, 255, 0.12);
-  overflow: hidden;
-}
-
-.dragon-health .bar > div {
-  height: 100%;
-  width: 100%;
-  border-radius: 9px;
-  background: linear-gradient(90deg, #ff2e2e, #ff8a1a);
-  transition: width 0.35s ease-out;
-}
-
-.dragon-health .bar.hurt > div { filter: brightness(1.8); }
-
 @keyframes damage {
   from { opacity: 1; }
   to { opacity: 0; }
@@ -499,9 +470,9 @@ body {
   top: 168px;
   bottom: 30px;
   display: grid;
-  grid-template-columns: repeat(6, 1fr);
+  grid-template-columns: repeat(5, 1fr);
   grid-template-rows: repeat(2, 1fr);
-  gap: 24px;
+  gap: 28px;
 }
 
 .game-card {
