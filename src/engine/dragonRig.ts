@@ -36,6 +36,8 @@ export interface DragonLook {
 }
 
 type Curve = THREE.CatmullRomCurve3;
+/** Right arm joints (shoulder, elbow, wrist, hand); the left is mirrored. */
+const ARM: [number, number, number][] = [[0.17, 0.6, 0.1], [0.28, 0.44, 0.06], [0.26, 0.36, 0.27], [0.21, 0.33, 0.37]];
 const v3 = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z);
 const curve = (...points: [number, number, number][]) => new THREE.CatmullRomCurve3(points.map(([x, y, z]) => v3(x, y, z)));
 
@@ -174,6 +176,10 @@ interface SweepOptions {
   ref?: THREE.Vector3;
   /** Which way the belly faces; that side gets the belly color. */
   ventral?: THREE.Vector3;
+  /** Where the belly color starts (dot with `ventral`); higher = a narrower stripe. */
+  bellyFrom?: number;
+  /** Round the ends into domes over this fraction of the length (start, end), instead of flat caps. */
+  round?: [number, number];
   /** Texture repeats around and per unit of length. */
   uRepeat?: number;
   vPerUnit?: number;
@@ -201,14 +207,16 @@ function sweep(path: Curve, look: { main: THREE.Color; belly: THREE.Color }, o: 
     const tangent = path.getTangentAt(t);
     const side = ref.clone().sub(tangent.clone().multiplyScalar(ref.dot(tangent))).normalize();
     const front = tangent.clone().cross(side).normalize();
-    const r = o.radius(t);
+    const [r0, r1] = o.round ?? [0, 0];
+    const dome = (x: number) => Math.sqrt(Math.max(0, 1 - (1 - x) ** 2)) * 0.97 + 0.03;
+    const r = o.radius(t) * (t < r0 ? dome(t / r0) : 1) * (1 - t < r1 ? dome((1 - t) / r1) : 1);
     for (let j = 0; j <= radial; j++) {
       const a = (j / radial) * Math.PI * 2;
       const dir = side.clone().multiplyScalar(Math.cos(a)).addScaledVector(front, Math.sin(a));
       const p = center.clone().addScaledVector(side, Math.cos(a) * r * (o.width ?? 1)).addScaledVector(front, Math.sin(a) * r * (o.depth ?? 1));
       positions.push(p.x, p.y, p.z);
       uvs.push((j / radial) * (o.uRepeat ?? 3), length * (o.vPerUnit ?? 5));
-      const belly = THREE.MathUtils.smoothstep(dir.dot(ventral), 0.3, 0.95) * 0.85;
+      const belly = THREE.MathUtils.smoothstep(dir.dot(ventral), o.bellyFrom ?? 0.3, 0.95) * 0.85;
       color.copy(look.main).lerp(look.belly, belly);
       colors.push(color.r, color.g, color.b);
     }
@@ -217,7 +225,8 @@ function sweep(path: Curve, look: { main: THREE.Color; belly: THREE.Color }, o: 
     for (let j = 0; j < radial; j++) {
       const a = i * (radial + 1) + j;
       const b = a + radial + 1;
-      indices.push(a, b, a + 1, b, b + 1, a + 1);
+      // (side, front, tangent) is right-handed, so this winding faces outward.
+      indices.push(a, a + 1, b, b, a + 1, b + 1);
     }
   }
   // Caps: a center point fanned to the first and last rings.
@@ -373,7 +382,7 @@ export class DragonRig {
     const spikeSize = look.spikes ?? 1;
     const bodyPath = curve([0, -0.05, -0.2], [0, 0.18, -0.13], [0, 0.45, -0.02], [0, 0.68, 0.03], [0, 0.84, 0.07]);
     const bodyRadius = (t: number) => (0.19 + Math.sin(Math.PI * Math.min(1, t * 0.9)) * 0.13 - t * 0.04) * bulk;
-    mesh(sweep(bodyPath, colors, { radius: bodyRadius, depth: 0.88, uRepeat: 4 }), skin, this.body);
+    mesh(sweep(bodyPath, colors, { radius: bodyRadius, depth: 0.88, uRepeat: 4, round: [0.22, 0.07], bellyFrom: 0.5 }), skin, this.body);
     // Glowing markings: spots down both flanks.
     const glow = look.glow !== undefined ? this.material({ color: look.glow, emissive: look.glow, emissiveIntensity: 1.8, roughness: 0.4 }) : null;
     if (glow) {
@@ -392,7 +401,8 @@ export class DragonRig {
     // Neck and head (the neck group nods; the head looks at the player).
     this.neck.position.set(0, 0.8, 0.06);
     this.body.add(this.neck);
-    mesh(sweep(curve([0, -0.04, -0.01], [0, 0.16, 0.04], [0, 0.32, 0.13], [0, 0.42, 0.24]), colors, { radius: (t) => 0.15 - t * 0.05, depth: 0.9 }), skin, this.neck);
+    // Starts wide and low inside the shoulders so it grows out of the body instead of sitting on it.
+    mesh(sweep(curve([0, -0.16, -0.04], [0, 0.04, 0.0], [0, 0.2, 0.06], [0, 0.34, 0.15], [0, 0.42, 0.24]), colors, { radius: (t) => 0.2 - t * 0.11, depth: 0.9, round: [0.12, 0.12], bellyFrom: 0.45 }), skin, this.neck);
     // Spikes down the back of the neck.
     for (let i = 0; i < 5; i++) {
       const t = i / 5;
@@ -413,6 +423,7 @@ export class DragonRig {
         radius: (t) => 0.11 - t * 0.06 + Math.sin(Math.PI * t) * 0.015,
         width: 1.05,
         depth: 0.72,
+        round: [0.3, 0.12],
         ref: v3(1, 0, 0),
         ventral: v3(0, -1, 0),
       }),
@@ -424,7 +435,7 @@ export class DragonRig {
       mesh(sweep(curve([s * 0.035, 0.075, 0.04], [s * 0.08, 0.08, 0.1], [s * 0.065, 0.06, 0.17]), colors, { radius: (t) => 0.026 * (1 - t * 0.6), segments: 10, radial: 8, ref: v3(0, 1, 0) }), skin, this.head);
       // Eye: a glowing ball with a dark slit pupil.
       const eye = mesh(new THREE.SphereGeometry(0.026 * (look.eyeSize ?? 1), 16, 12), eyeGlow, this.head);
-      eye.position.set(s * 0.078, 0.045, 0.12);
+      eye.position.set(s * 0.086, 0.045, 0.125);
       const pupil = mesh(new THREE.SphereGeometry(0.026 * (look.eyeSize ?? 1), 12, 8), dark, eye);
       pupil.scale.set(0.18, 0.85, 0.5);
       pupil.position.set(s * 0.008, 0, 0.012);
@@ -433,8 +444,9 @@ export class DragonRig {
         extra(mesh(spike([[s * 0.04, -0.01, 0.3], [s * 0.12, -0.05, 0.35], [s * 0.2, -0.14, 0.33], [s * 0.24, -0.26, 0.28]], 0.009, bone, v3(0, 0, 1)), ivory, this.head));
       }
       // Nostril.
-      const nostril = mesh(new THREE.SphereGeometry(0.012, 8, 6), dark, this.head);
-      nostril.position.set(s * 0.025, 0.012, 0.32);
+      const nostril = mesh(new THREE.SphereGeometry(0.01, 8, 6), dark, this.head);
+      nostril.position.set(s * 0.026, 0.008, 0.325);
+      nostril.scale.set(1.4, 0.6, 1);
       // Upper fangs.
       for (const z of [0.16, 0.22, 0.28]) mesh(spike([[s * 0.045, -0.035, z], [s * 0.045, -0.07, z + 0.005]], 0.011, bone), ivory, this.head);
     }
@@ -462,7 +474,7 @@ export class DragonRig {
     this.jaw.position.set(0, -0.04, 0.0);
     this.head.add(this.jaw);
     mesh(
-      sweep(curve([0, 0, -0.02], [0, -0.03, 0.14], [0, -0.035, 0.29]), headColors, { radius: (t) => 0.068 - t * 0.035, width: 1.05, depth: 0.5, ventral: v3(0, -1, 0) }),
+      sweep(curve([0, 0, -0.02], [0, -0.03, 0.14], [0, -0.035, 0.29]), headColors, { radius: (t) => 0.068 - t * 0.035, width: 1.05, depth: 0.5, ventral: v3(0, -1, 0), round: [0.2, 0.15] }),
       skin,
       this.jaw,
     );
@@ -494,7 +506,7 @@ export class DragonRig {
       pts.push([more.x, more.y, more.z]);
       const r0 = 0.17 * (1 - cuts[i]) + 0.014;
       const r1 = 0.17 * (1 - cuts[i + 1]) + 0.014;
-      mesh(sweep(curve(...pts), colors, { radius: (t) => r0 + (r1 - r0) * t, segments: 14, ventral: v3(0, 0, 1) }), skin, seg);
+      mesh(sweep(curve(...pts), colors, { radius: (t) => r0 + (r1 - r0) * t, segments: 14, ventral: v3(0, 0, 1), round: [i ? 0.12 : 0.3, i === 2 ? 0.1 : 0] }), skin, seg);
       // Back spikes.
       for (let s = 1; s < 4; s++) {
         const p = tailPath.getPointAt(cuts[i] + ((cuts[i + 1] - cuts[i]) * s) / 4).sub(start);
@@ -552,7 +564,7 @@ export class DragonRig {
       g.position.set(s * ox, oy, oz);
       parentGroup.add(g);
       const local = joints.map(([x, y, z]) => [s * x - s * ox, y - oy, z - oz] as [number, number, number]);
-      mesh(sweep(curve(...local), colors, { radius: (t) => thick * (1 - t * 0.55) + Math.sin(Math.PI * t) * thick * 0.25, segments: 16, radial: 12, ref: v3(0, 0, 1), ventral: v3(0, 0, 1) }), skin, g);
+      mesh(sweep(curve(...local), colors, { radius: (t) => thick * (1 - t * 0.55) + Math.sin(Math.PI * t) * thick * 0.25, segments: 16, radial: 12, ref: v3(0, 0, 1), bellyFrom: 2, round: [0.2, 0.1] }), skin, g);
       // Three talons from the end, pointing forward and down.
       const [ex, ey, ez] = local[local.length - 1];
       for (const spread of [-1, 0, 1]) {
@@ -561,10 +573,12 @@ export class DragonRig {
       return g;
     };
     this.arms = {
-      L: limb(-1, [[0.16, 0.56, 0.12], [0.3, 0.38, 0.22], [0.28, 0.2, 0.3], [0.27, 0.12, 0.35]], 0.075 * bulk, this.body),
-      R: limb(1, [[0.16, 0.56, 0.12], [0.3, 0.38, 0.22], [0.28, 0.2, 0.3], [0.27, 0.12, 0.35]], 0.075 * bulk, this.body),
+      // Upper arm back and down, forearm raised forward: claws held out in front of the chest.
+      L: limb(-1, ARM, 0.075 * bulk, this.body),
+      R: limb(1, ARM, 0.075 * bulk, this.body),
     };
-    for (const s of [-1, 1]) limb(s, [[0.16, 0.02, -0.1], [0.3, -0.14, 0.06], [0.28, -0.38, -0.02], [0.28, -0.45, 0.08]], 0.1 * bulk, this.body);
+    // Legs drawn up while flying: knees forward, shins tucked back, feet hanging.
+    for (const s of [-1, 1]) limb(s, [[0.15, 0.06, -0.06], [0.29, -0.04, 0.2], [0.28, -0.27, 0.1], [0.27, -0.35, 0.2]], 0.1 * bulk, this.body);
 
     // Wings: arm bones out to the wrist, four fingers fanning out, membranes between.
     const wing = (s: number) => {
@@ -580,7 +594,7 @@ export class DragonRig {
       const F = [P(1.78 * span, 1.02 * span, -0.26), P(1.8 * span, 0.5, -0.26), P(1.55 * span, 0.06, -0.22), P(1.08 * span, -0.18, -0.2)];
       const B = P(0.12, 0.12, -0.16);
       const bones = (a: THREE.Vector3, b: THREE.Vector3, r0: number, r1: number) =>
-        mesh(sweep(new THREE.CatmullRomCurve3([a, a.clone().lerp(b, 0.5).add(v3(0, 0.02, 0)), b]), colors, { radius: (t) => r0 + (r1 - r0) * t, segments: 10, radial: 10, ref: v3(0, 0, 1) }), skin, g);
+        mesh(sweep(new THREE.CatmullRomCurve3([a, a.clone().lerp(b, 0.5).add(v3(0, 0.02, 0)), b]), colors, { radius: (t) => r0 + (r1 - r0) * t, segments: 10, radial: 10, ref: v3(0, 0, 1), ventral: v3(0, -1, 0), bellyFrom: 0.7, round: [0.15, 0.1] }), skin, g);
       bones(S, E, 0.055, 0.04);
       bones(E, W, 0.04, 0.03);
       for (const f of F) bones(W, f, 0.022, 0.006);
@@ -613,8 +627,10 @@ export class DragonRig {
     marker('body', this.body, v3(0, 0.38, 0.1), 0.4 * bulk);
     marker('wingL', this.wings.L, v3(-1.05, -0.2, -0.1), 0.6);
     marker('wingR', this.wings.R, v3(1.05, -0.2, -0.1), 0.6);
-    marker('clawL', this.arms.L, v3(-0.11, -0.4, 0.22), 0.29);
-    marker('clawR', this.arms.R, v3(0.11, -0.4, 0.22), 0.29);
+    // Around the forearm and hand.
+    const hand = v3(ARM[2][0] - ARM[0][0], ARM[2][1] - ARM[0][1], ARM[2][2] - ARM[0][2]);
+    marker('clawL', this.arms.L, v3(-hand.x, hand.y, hand.z + 0.04), 0.29);
+    marker('clawR', this.arms.R, v3(hand.x, hand.y, hand.z + 0.04), 0.29);
     // On the visible curl, inside the piece that breaks off.
     marker('tail', this.tail[1], tailPath.getPointAt(0.72).sub(tailPath.getPointAt(0.34)), 0.31);
 
