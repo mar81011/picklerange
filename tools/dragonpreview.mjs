@@ -32,6 +32,7 @@ const r = await send('Runtime.evaluate', { awaitPromise: true, returnByValue: tr
   const THREE = await import('/node_modules/.vite/deps/three.js');
   const { DragonRig } = await import('/src/engine/dragonRig.ts');
   const { DRAGON_LEVELS } = await import('/src/games/dragon/levels.ts');
+  const { helmetMesh } = await import('/src/screens/dragon.ts');
   document.body.innerHTML = '';
   document.body.style.margin = '0';
   const canvas = document.createElement('canvas');
@@ -53,6 +54,7 @@ const r = await send('Runtime.evaluate', { awaitPromise: true, returnByValue: tr
     const rim = new THREE.DirectionalLight(0xff8040, 1.5); rim.position.set(-3, 2, -4); scene.add(rim);
     const rig = new DragonRig(lvl.look, 2.4, renderer);
     rig.mode = 'hover';
+    if (lvl.options.armor) rig.wear(helmetMesh());
     scene.add(rig.root);
     // Advance to the requested flap phase.
     rig.update(${PHASE} + 0.001, new THREE.Vector3(0, 1.2, 6));

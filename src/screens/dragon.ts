@@ -75,7 +75,7 @@ function fireballMesh(): { root: THREE.Group; flicker(now: number): void; trail:
 type FireballMesh = ReturnType<typeof fireballMesh>;
 
 /** Steel helmet with a spike, worn over the head in armored levels. About 0.6 across at scale 1. */
-function helmetMesh(): THREE.Group {
+export function helmetMesh(): THREE.Group {
   const steel = new THREE.MeshStandardMaterial({ color: 0x9aa6ba, metalness: 0.5, roughness: 0.3, emissive: 0x3a4250, emissiveIntensity: 0.4 });
   const g = new THREE.Group();
   const dome = new THREE.Mesh(new THREE.SphereGeometry(0.27, 20, 10, 0, Math.PI * 2, 0, Math.PI / 2), steel);
@@ -166,11 +166,7 @@ function playLevel(app: App, ctx: LevelContext): Promise<LevelOutcome> {
 
   // Armored levels: a helmet strapped on the head.
   const helmet = state.armor > 0 ? helmetMesh() : null;
-  if (helmet) {
-    helmet.scale.setScalar(0.5);
-    helmet.position.set(0, 0.07, 0.04);
-    rig.wear(helmet);
-  }
+  if (helmet) rig.wear(helmet);
 
   // Hit zones, for tuning with ?zones (dev builds only).
   const zoneMeshes = new Map<PartId, THREE.Mesh>();

@@ -41,7 +41,7 @@ export const DRAGON_LEVELS: readonly DragonLevel[] = [
     info: { name: 'Baby Dragon', description: 'Slow, with long hovers. Aim for the head!', ...DEFEAT },
     options: { ...BASE, hp: 20, balls: 14, size: 2.35, speed: 0.4, flyMs: 4000, hoverMs: 4500, width: 1.6 },
     // Chubby, big-headed and big-eyed, with little horn nubs.
-    look: { main: 0xb8501a, belly: 0xe8b874, membrane: 0x8a2f1c, horns: 'nubs', wings: 'bat', tail: 'spade', headSize: 1.8, eyeSize: 1.2, bulk: 1.15, spikes: 0.6 },
+    look: { main: 0xb8501a, belly: 0xe8b874, membrane: 0x8a2f1c, horns: 'nubs', wings: 'bat', tail: 'spade', mood: 'cute', headSize: 1.12, eyeSize: 1.15, bulk: 1.1, spikes: 0.7 },
   },
   {
     info: { name: 'Swamp Drake', description: 'Faster swoops and shorter hovers.', ...DEFEAT },
