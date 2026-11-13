@@ -19,6 +19,10 @@ export interface CharacterOptions {
   heightM: number;
   /** Multiplies the model's colors, e.g. to tint a variant. Gives this copy its own materials. */
   tint?: number;
+  /** Replaces the color texture (e.g. a recolored atlas). Gives this copy its own materials. */
+  map?: THREE.Texture;
+  /** Stretches the model sideways (and front to back) for a heavier build. Default 1. */
+  girth?: number;
 }
 
 export class Character {
@@ -40,10 +44,11 @@ export class Character {
       // Skinned meshes animate outside their original bounds; skip culling so they never pop out.
       mesh.frustumCulled = false;
       const list = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
-      if (options.tint !== undefined) {
+      if (options.tint !== undefined || options.map) {
         const tinted = list.map((m) => {
           const copy = (m as THREE.MeshStandardMaterial).clone();
-          copy.color.multiply(new THREE.Color(options.tint));
+          if (options.tint !== undefined) copy.color.multiply(new THREE.Color(options.tint));
+          if (options.map && copy.map) copy.map = options.map;
           this.materials.push(copy);
           return copy;
         });
@@ -56,11 +61,39 @@ export class Character {
     // Bones need world matrices before measuring, or a skinned mesh reports a garbage size.
     model.updateMatrixWorld(true);
     const size = new THREE.Box3().setFromObject(model).getSize(new THREE.Vector3());
-    model.scale.setScalar(options.heightM / size.y);
+    const s = options.heightM / size.y;
+    const girth = options.girth ?? 1;
+    model.scale.set(s * girth, s, s * girth);
     this.root.add(model);
+    this.model = model;
 
     this.clips = gltf.animations;
     this.mixer = new THREE.AnimationMixer(model);
+  }
+
+  private model: THREE.Object3D;
+  /** Things worn on the body (hats); disposed with the character. */
+  private worn: THREE.Object3D[] = [];
+
+  /**
+   * Puts something on the head so it moves with it: `object` is built in
+   * meters, upright, centered on the crown of the head and facing +z, and is
+   * placed at the top of the model above the head bone (lowered by `sink` m).
+   */
+  wearOnHead(object: THREE.Object3D, sink = 0, boneName = 'Head'): void {
+    const bone = this.model.getObjectByName(boneName);
+    if (!bone) return;
+    this.root.updateMatrixWorld(true);
+    const head = bone.getWorldPosition(new THREE.Vector3());
+    const top = new THREE.Box3().setFromObject(this.model).max.y;
+    // Work in the character's own space (its root), then hand it to the bone keeping that pose.
+    const inv = this.root.matrixWorld.clone().invert();
+    head.applyMatrix4(inv);
+    object.position.set(head.x, top - this.root.getWorldPosition(new THREE.Vector3()).y - sink, head.z);
+    this.root.add(object);
+    this.root.updateMatrixWorld(true);
+    bone.attach(object);
+    this.worn.push(object);
   }
 
   static async create(url: string, options: CharacterOptions): Promise<Character> {
@@ -71,11 +104,13 @@ export class Character {
    * Plays a clip by name. Looping clips repeat; one-shots hold their last frame
    * (e.g. Death) and resolve when finished.
    */
-  play(name: string, { loop = true, timeScale = 1, fade = 0.2 } = {}): Promise<void> {
+  play(name: string, { loop = true, timeScale = 1, fade = 0.2, offset = 0 } = {}): Promise<void> {
     const clip = THREE.AnimationClip.findByName(this.clips, name);
     if (!clip) return Promise.resolve();
     const action = this.mixer.clipAction(clip);
     action.reset();
+    // Start part-way through (0..1), so a crowd doesn't move in lockstep.
+    action.time = offset * clip.duration;
     action.setLoop(loop ? THREE.LoopRepeat : THREE.LoopOnce, Infinity);
     action.clampWhenFinished = !loop;
     action.timeScale = timeScale;
@@ -104,5 +139,13 @@ export class Character {
 
   dispose(): void {
     for (const m of this.materials) m.dispose();
+    for (const w of this.worn) {
+      w.traverse((o) => {
+        const mesh = o as THREE.Mesh;
+        if (!mesh.isMesh || mesh.userData.shared) return;
+        mesh.geometry.dispose();
+        for (const m of Array.isArray(mesh.material) ? mesh.material : [mesh.material]) m.dispose();
+      });
+    }
   }
 }

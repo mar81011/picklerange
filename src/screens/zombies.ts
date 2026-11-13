@@ -5,8 +5,9 @@ import { ballFlight, burst, floatText, shockwave } from '../engine/effects';
 import type { GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { Character, loadModel } from '../engine/character';
 import { easeInCubic, type Scope } from '../engine/scope';
+import { zombieLook } from '../engine/zombieLooks';
 import { STARTING_LIVES, ZOMBIE_LEVELS } from '../games/zombies/levels';
-import { ZOMBIE_HEIGHT, applyHit, createWave, isWaveOver, sizeOf, tick, totalToSpawn, zombieZ, type WaveOptions, type ZombieKind } from '../games/zombies/logic';
+import { ZOMBIE_HEIGHT, applyHit, createWave, isWaveOver, sizeOf, tick, totalToSpawn, zombieZ, type WaveOptions } from '../games/zombies/logic';
 import { hudBar, setValue } from '../ui/hud';
 import { pointAlong } from './common';
 import { runLevels, type LevelContext, type LevelOutcome } from './levelRunner';
@@ -15,8 +16,6 @@ const hearts = (n: number) => (n > 0 ? '♥'.repeat(n) : '—');
 
 /** CC0 zombie by Quaternius (see public/models/CREDITS.md). */
 export const ZOMBIE_MODEL = '/models/zombie.glb';
-/** Color tint per kind: walkers keep the model's colors. */
-const TINTS: Record<ZombieKind, number> = { walker: 0xffffff, brute: 0xff8f8f, boss: 0xb98cff };
 /** The walk clip covers about this many meters per second at normal speed. */
 const WALK_CLIP_SPEED = 0.6;
 
@@ -84,11 +83,19 @@ function playLevel(app: App, ctx: LevelContext, zombieModel: GLTF): Promise<Leve
       const { state: next, arrived, spawned } = tick(state, opts, now, Math.random);
       state = next;
       for (const z of spawned) {
-        const actor = new Character(zombieModel, { heightM: ZOMBIE_HEIGHT * sizeOf(z.kind), tint: TINTS[z.kind] });
+        // Each zombie gets its own skin, clothes and maybe a hat (brutes: hard hat, boss: crown).
+        const look = zombieLook(zombieModel, z.kind);
+        const size = sizeOf(z.kind) * (look?.height ?? 1);
+        const actor = new Character(zombieModel, { heightM: ZOMBIE_HEIGHT * size, tint: look ? undefined : 0xffffff, map: look?.map, girth: look?.girth });
+        if (look?.hat) {
+          const hat = look.hat();
+          hat.scale.multiplyScalar(size);
+          actor.wearOnHead(hat, look.sink * size);
+        }
         actor.root.position.set(z.x, 0, zombieZ(z, now));
         scope.add(actor.root);
         // Faster zombies play the walk faster so their feet match the ground.
-        void actor.play('Walk', { timeScale: z.speed / WALK_CLIP_SPEED, fade: 0 });
+        void actor.play('Walk', { timeScale: z.speed / WALK_CLIP_SPEED, fade: 0, offset: Math.random() });
         actors.set(z.id, actor);
         if (z.kind === 'boss') floatText(scope, { x: 0, y: 3.2, z: zombieZ(z, now) }, 'THE BOSS!', 'red', 110);
       }
