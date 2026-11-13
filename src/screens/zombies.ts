@@ -5,7 +5,7 @@ import { ballFlight, burst, floatText, shockwave } from '../engine/effects';
 import type { GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { Character, loadModel } from '../engine/character';
 import { easeInCubic, type Scope } from '../engine/scope';
-import { zombieLook } from '../engine/zombieLooks';
+import { ZOMBIE_HIDDEN_BONES, zombieLook } from '../engine/zombieLooks';
 import { STARTING_LIVES, ZOMBIE_LEVELS } from '../games/zombies/levels';
 import { ZOMBIE_HEIGHT, applyHit, createWave, isWaveOver, sizeOf, tick, totalToSpawn, zombieZ, type WaveOptions } from '../games/zombies/logic';
 import { hudBar, setValue } from '../ui/hud';
@@ -83,14 +83,14 @@ function playLevel(app: App, ctx: LevelContext, zombieModel: GLTF): Promise<Leve
       const { state: next, arrived, spawned } = tick(state, opts, now, Math.random);
       state = next;
       for (const z of spawned) {
-        // Each zombie gets its own skin, clothes and maybe a hat (brutes: hard hat, boss: crown).
+        // Each zombie is its own Frankenstein's monster (brutes: hard hat, boss: crown).
         const look = zombieLook(zombieModel, z.kind);
         const size = sizeOf(z.kind) * (look?.height ?? 1);
-        const actor = new Character(zombieModel, { heightM: ZOMBIE_HEIGHT * size, tint: look ? undefined : 0xffffff, map: look?.map, girth: look?.girth });
-        if (look?.hat) {
-          const hat = look.hat();
-          hat.scale.multiplyScalar(size);
-          actor.wearOnHead(hat, look.sink * size);
+        const actor = new Character(zombieModel, { heightM: ZOMBIE_HEIGHT * size, tint: look ? undefined : 0xffffff, map: look?.map, girth: look?.girth, hideBones: ZOMBIE_HIDDEN_BONES });
+        if (look) {
+          const gear = look.gear();
+          gear.scale.multiplyScalar(size);
+          actor.wearOnHead(gear);
         }
         actor.root.position.set(z.x, 0, zombieZ(z, now));
         scope.add(actor.root);

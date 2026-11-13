@@ -23,6 +23,8 @@ export interface CharacterOptions {
   map?: THREE.Texture;
   /** Stretches the model sideways (and front to back) for a heavier build. Default 1. */
   girth?: number;
+  /** Bones shrunk to nothing (with everything they carry), e.g. a tongue. Kept that way through animations. */
+  hideBones?: string[];
 }
 
 export class Character {
@@ -69,6 +71,17 @@ export class Character {
 
     this.clips = gltf.animations;
     this.mixer = new THREE.AnimationMixer(model);
+    for (const name of options.hideBones ?? []) {
+      const bone = model.getObjectByName(name);
+      if (bone) this.hidden.push(bone);
+    }
+    this.applyHidden();
+  }
+
+  private hidden: THREE.Object3D[] = [];
+
+  private applyHidden(): void {
+    for (const bone of this.hidden) bone.scale.setScalar(0.001);
   }
 
   private model: THREE.Object3D;
@@ -130,6 +143,8 @@ export class Character {
 
   update(dt: number): void {
     this.mixer.update(dt);
+    // After the animation, which may have set these bones' scale.
+    this.applyHidden();
   }
 
   /** Brief red flash, for hits. Only works on tinted copies (they own their materials). */

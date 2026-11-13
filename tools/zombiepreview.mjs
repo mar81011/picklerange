@@ -8,6 +8,7 @@ import { join } from 'node:path';
 const PORT = 9343;
 const W = 1600;
 const H = 800;
+const CLOSE = process.argv[2] === 'close';
 mkdirSync('.shots', { recursive: true });
 const edge = spawn('C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe', [
   '--headless=new', `--remote-debugging-port=${PORT}`, `--window-size=${W},${H}`,
@@ -28,7 +29,7 @@ await sleep(6000);
 const r = await send('Runtime.evaluate', { awaitPromise: true, returnByValue: true, expression: `(async () => {
   const THREE = await import('/node_modules/.vite/deps/three.js');
   const { Character, loadModel } = await import('/src/engine/character.ts');
-  const { zombieLook } = await import('/src/engine/zombieLooks.ts');
+  const { zombieLook, ZOMBIE_HIDDEN_BONES } = await import('/src/engine/zombieLooks.ts');
   const { ZOMBIE_HEIGHT, sizeOf } = await import('/src/games/zombies/logic.ts');
   const gltf = await loadModel('/models/zombie.glb');
   document.body.innerHTML = '';
@@ -49,21 +50,21 @@ const r = await send('Runtime.evaluate', { awaitPromise: true, returnByValue: tr
   kinds.forEach((kind, i) => {
     const look = zombieLook(gltf, kind, rand);
     const size = sizeOf(kind) * look.height;
-    const a = new Character(gltf, { heightM: ZOMBIE_HEIGHT * size, map: look.map, girth: look.girth });
-    if (look.hat) { const h = look.hat(); h.scale.multiplyScalar(size); a.wearOnHead(h, look.sink * size); }
+    const a = new Character(gltf, { heightM: ZOMBIE_HEIGHT * size, map: look.map, girth: look.girth, hideBones: ZOMBIE_HIDDEN_BONES });
+    const gear = look.gear(); gear.scale.multiplyScalar(size); a.wearOnHead(gear);
     a.root.position.set((i - (kinds.length - 1) / 2) * 1.25, 0, kind === 'boss' ? -1.2 : 0);
     scene.add(a.root);
     a.play('Walk', { offset: rand() });
     a.update(0.01);
   });
   const cam = new THREE.PerspectiveCamera(38, ${W} / ${H}, 0.1, 100);
-  cam.position.set(0, 2.6, 9.5); cam.lookAt(0, 1.2, 0);
+  if (${CLOSE}) { cam.position.set(-0.6, 1.9, 3.2); cam.lookAt(-0.6, 1.4, 0); } else { cam.position.set(0, 2.6, 9.5); cam.lookAt(0, 1.2, 0); }
   renderer.render(scene, cam);
   return 'ok';
 })()` });
 console.log(JSON.stringify(r).slice(0, 600));
 const { data } = await send('Page.captureScreenshot', { format: 'png' });
-writeFileSync('.shots/zombies-lineup.png', Buffer.from(data, 'base64'));
+writeFileSync(CLOSE ? '.shots/zombies-faces.png' : '.shots/zombies-lineup.png', Buffer.from(data, 'base64'));
 ws.close();
 edge.kill();
 process.exit(0);
