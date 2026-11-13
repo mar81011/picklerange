@@ -1,10 +1,8 @@
 import * as THREE from 'three';
-import type { GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { music } from '../audio/music';
 import type { App } from '../app';
 import { HIT_DEBOUNCE_MS } from '../config';
-import { loadModel } from '../engine/character';
-import { CLOWN_HEIGHT, CLOWN_MODEL, Clown } from '../engine/clown';
+import { CLOWN_TOP, Clown } from '../engine/clown';
 import { DunkTank, SEAT, TANK, WATER_Y, createDunkTarget } from '../engine/dunkTank';
 import { ballFlight, burst, floatText, shockwave } from '../engine/effects';
 import { easeInCubic, easeOutCubic, linear, type Scope } from '../engine/scope';
@@ -17,11 +15,11 @@ import { runLevels, type LevelContext, type LevelOutcome } from './levelRunner';
 
 /** Where the target hangs when it's not sliding. */
 const TARGET_HOME = { x: 2.0, y: 1.1, z: -2.2 };
-/** Height of the clown's root (his feet when standing) while he sits on the plank: hips just above it. */
-const SEATED_Y = SEAT.y - CLOWN_HEIGHT * 0.44;
+/** Height of the clown's root (his hips) while he sits on the plank. */
+const SEATED_Y = SEAT.y + 0.05;
 /** Root heights: all the way under, and bobbing back up with his head out of the water. */
-const UNDER_Y = WATER_Y - CLOWN_HEIGHT - 0.12;
-const POPPED_Y = WATER_Y - CLOWN_HEIGHT * 0.8;
+const UNDER_Y = WATER_Y - CLOWN_TOP - 0.08;
+const POPPED_Y = WATER_Y - 0.66;
 /** How long the dunk, swim and climb back up take, in ms. */
 const RESET_MS = 2900;
 
@@ -35,7 +33,7 @@ function optionsFor(index: number): DunkOptions {
     radius: s.radius,
     rim: s.radius + RIM_WIDTH,
     motion: s.motion,
-    clown: { center: { x: SEAT.x, y: SEAT.y + 0.4, z: SEAT.z }, radius: 0.38 },
+    clown: { center: { x: SEAT.x, y: SEAT.y + 0.6, z: SEAT.z }, radius: 0.5 },
     balls: s.balls,
     dunks: s.dunks,
     resetMs: RESET_MS,
@@ -90,14 +88,14 @@ function splash(scope: Scope, tank: DunkTank, at: THREE.Vector3): void {
   }
 }
 
-function playLevel(app: App, ctx: LevelContext, gltf: GLTF): Promise<LevelOutcome> {
+function playLevel(app: App, ctx: LevelContext): Promise<LevelOutcome> {
   const { scope } = ctx;
   const opts = optionsFor(ctx.index);
   let state = createRound(opts);
 
   const tank = new DunkTank();
   scope.add(tank.root);
-  const clown = new Clown(gltf);
+  const clown = new Clown();
   clown.root.position.set(SEAT.x, SEATED_Y, SEAT.z);
   // Turned a little toward the target (and the player), so he reads as sitting from the high camera.
   clown.root.rotation.y = 0.45;
@@ -149,7 +147,7 @@ function playLevel(app: App, ctx: LevelContext, gltf: GLTF): Promise<LevelOutcom
       clown.root.position.y = seatY + (UNDER_Y - seatY) * t;
       clown.root.rotation.z = t * 0.25;
       // Splash as his hips reach the water.
-      if (!splashed && clown.root.position.y + CLOWN_HEIGHT * 0.5 < WATER_Y) {
+      if (!splashed && clown.root.position.y < WATER_Y) {
         splashed = true;
         splash(scope, tank, clown.root.position);
         music.sfx('big');
@@ -240,9 +238,5 @@ function playLevel(app: App, ctx: LevelContext, gltf: GLTF): Promise<LevelOutcom
 
 export function dunkScreen(app: App, scope: Scope): void {
   app.world.show('carnival');
-  // The model is preloaded at startup, so this normally resolves at once.
-  void loadModel(CLOWN_MODEL).then((gltf) => {
-    if (!scope.alive) return;
-    void runLevels(app, scope, { gameId: 'dunk', levels: DUNK_LEVELS.map((l) => l.info), play: (ctx) => playLevel(app, ctx, gltf) });
-  });
+  void runLevels(app, scope, { gameId: 'dunk', levels: DUNK_LEVELS.map((l) => l.info), play: (ctx) => playLevel(app, ctx) });
 }
